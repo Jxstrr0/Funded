@@ -12,6 +12,7 @@ Read this at the start of every session. The full design spec is `docs/HANDOFF.m
   - **CC0** assets.
   - **CC BY** assets, **with attribution** added to `CREDITS.md` (title, author, source URL, licence).
   - Nothing else: no unlicensed or "free for personal use" assets.
+- **Helpers:** up to **2** helper agents at a time, each either Opus 5.5 at medium effort or Sonnet 5.5 at high effort, at Claude's discretion.
 - The owner works mostly **from a phone** through the GitHub web UI. Keep files simple and easy to edit there, and keep tuning numbers in `js/config.js` and screen positions in the CSS variables at the top of `css/style.css`.
 
 ## Art
@@ -19,6 +20,8 @@ Read this at the start of every session. The full design spec is `docs/HANDOFF.m
 - `assets/desk.png` and `assets/wide.png` are **Blender blockouts to build on**, not final art. They come from the hosted Blender project (Higgsfield 3D Jutsu, link in `docs/HANDOFF.md` §11): cameras `CAM_main` and `CAM_wide`, screens `HERO_screen_top` and `HERO_screen_bottom`.
 - Improve the scene in that project and re-render at the same 720×1280 framing, so the percentage-based overlays keep lining up. If a camera moves, re-measure the screen rectangles and the intro zoom.
 - Outstanding art: listed in `docs/HANDOFF.md` §11.
+- Measured screen rectangles (% of frame): CAM_main top 11/89/21.6/47.6, bottom 11/89/52.4/78.4 (left/right/top/bottom). CAM_wide top 33.0/59.4/46.2/54.9, bottom 33.2/59.3/56.4/65.0. Intro zoom: scale 3, origin 44.3% 58.4%.
+- Higgsfield costs: Blender edits and renders through the python tools appear free. `generate_angles` (Seedream) and `generate_video` (Seedance) spend credits, so quote first. The balance was 0 credits on 2026-11-12.
 
 ## Locked technical rules (from the handoff)
 
@@ -31,8 +34,9 @@ Read this at the start of every session. The full design spec is `docs/HANDOFF.m
 
 ## Progress
 
-- Stages 1–2 done (PR #1), plus the in-memory five-day eval.
-- Next: **stage 3**, saving run state to localStorage, including mid-day resume.
+- Stages 1–2 done (PR #1), plus the five-day eval.
+- Stage 3 done: run state saves to localStorage (`js/save.js`), and a mid-day reload resumes paused at the same moment. A firing clears the save.
+- Next: **stage 4**, Reputation, perks and the guided first day.
 - Update this section when a stage lands.
 
 ## Verifying changes

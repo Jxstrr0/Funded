@@ -5,6 +5,7 @@ import { newRun, newDay, applyFill, orderDelta, snapshot, closeDay, RULE_TEXT } 
 import { Chart } from './chart.js';
 import * as ui from './ui.js';
 import { unlockAudio, sfx } from './audio.js';
+import { loadRun, saveRun, clearRun } from './save.js';
 
 const RULES = TIER1;
 const N_TICKS = SESSION.candles * SESSION.ticksPerCandle;
@@ -50,6 +51,38 @@ function render() {
   return snap;
 }
 
+// ---------- saving ----------
+
+// Saves the run, plus the day in progress while trading, so a reload resumes
+// the same day at the same moment (paused, chart covered).
+let lastSave = 0;
+function persist(force = false) {
+  if (!S.run) return;
+  const now = performance.now();
+  if (!force && now - lastSave < 250) return;
+  lastSave = now;
+  const inDay = S.phase === 'running' || S.phase === 'paused';
+  saveRun(S.run, inDay ? { day: S.day, elapsed: S.elapsed, revealed: [...S.revealed] } : null, S.sizeIndex);
+}
+
+function resumeSaved(data) {
+  S.run = data.run;
+  S.sizeIndex = data.sizeIndex ?? RULES.defaultSizeIndex;
+  if (!data.live) { openDay(); return; }
+  S.day = data.live.day;
+  S.market = generateDay({ seed: hashSeed(S.run.seed, S.run.day), dayStartBalance: S.day.startBalance, rules: RULES });
+  S.elapsed = data.live.elapsed;
+  S.revealed = new Set(data.live.revealed);
+  S.lastWarnSec = null;
+  ui.hideCard();
+  ui.hideNews();
+  ui.setBell(null);
+  S.phase = 'paused';
+  ui.setPaused(true);
+  ui.setTradingEnabled(false);
+  render();
+}
+
 // ---------- orders ----------
 
 function trade(side) {
@@ -74,6 +107,7 @@ function fill(delta, p) {
   S.day.realized += r.realized;
   S.day.trades += 1;
   S.dirty = true;
+  persist(true);
 }
 
 // ---------- the loop ----------
@@ -113,7 +147,7 @@ function frame(now) {
     if (left !== S.lastWarnSec) { S.lastWarnSec = left; sfx.warn(S.day.qty !== 0); }
   }
 
-  if (S.dirty) render();
+  if (S.dirty) { render(); persist(); }
   else ui.renderMarket({ ticker: S.market.ticker, last: price(), open: S.market.open, minute: minuteNow(), day: S.run.day, evalDays: RULES.evalDays });
 
   if (S.elapsed >= DAY_MS) closingBell();
@@ -126,6 +160,7 @@ function pause() {
   S.phase = 'paused';
   ui.setPaused(true);
   ui.setTradingEnabled(false);
+  persist(true);
 }
 
 function resume() {
@@ -143,6 +178,7 @@ window.addEventListener('pagehide', pause);
 // ---------- flow ----------
 
 function startRun() {
+  clearRun();
   S.run = newRun(RULES);
   openDay();
 }
@@ -159,6 +195,7 @@ function openDay() {
   ui.setPaused(false);
   ui.setTradingEnabled(false);
   render();
+  persist(true);
 
   const r = S.run;
   const counted = `${r.daysCounted} of ${RULES.minTradingDays}`;
@@ -188,6 +225,7 @@ function beginDay() {
   S.prevNow = null;
   ui.setTradingEnabled(true);
   render();
+  persist(true);
 }
 
 function closingBell() {
@@ -200,6 +238,8 @@ function closingBell() {
   const { run, outcome, result } = closeDay(S.run, S.day, RULES);
   const prevFloor = S.run.floor;
   S.run = run;
+  if (outcome === 'next') persist(true);
+  else clearRun();
   if (outcome === 'pass') return passed();
   if (outcome === 'failTarget' || outcome === 'failMinDays') return evalOver(outcome === 'failTarget' ? 'target' : 'minDays');
 
@@ -222,6 +262,7 @@ function closingBell() {
 
 function fire(rule) {
   S.phase = 'over';
+  clearRun();
   ui.setBell(null);
   ui.setTradingEnabled(false);
   ui.shake();
@@ -289,18 +330,21 @@ function loadImage(src) {
 
 function title() {
   S.phase = 'title';
+  const saved = loadRun();
   ui.showCard(`
     <div class="eyebrow">Longlight Interactive</div>
     <h1>Funded<span class="dot">.</span></h1>
     <p>The firm gives you $25,000 and five days. Make <b>+$1,500</b>.
       Lose <b>$750</b> in a day, touch the drawdown floor, or hold through the bell, and you're out.</p>
     <p style="font-size:3.2cqw">Size buys a share of your buying power. News times are marked on the clock.</p>
-    <button class="cta" data-action="start">Start eval</button>
+    ${saved ? `<button class="cta" data-action="cont">Continue · Day ${saved.run.day} of ${RULES.evalDays}</button>
+    <button class="cta ghost" data-action="start">New eval</button>`
+    : '<button class="cta" data-action="start">Start eval</button>'}
     <div class="fine">Desktop: B buy · S sell · F flatten · 1–3 size · P pause</div>
-  `, { start: intro }, { cls: 'title-card', clear: true });
+  `, { start: () => intro(startRun), cont: () => intro(() => resumeSaved(saved)) }, { cls: 'title-card', clear: true });
 }
 
-function intro() {
+function intro(next) {
   unlockAudio();
   ui.hideCard();
   S.phase = 'intro';
@@ -309,7 +353,7 @@ function intro() {
   ui.setFrameMode('intro');
   setTimeout(() => {
     ui.setFrameMode('desk', 'ui');
-    startRun();
+    next();
   }, reduce ? 50 : ms);
 }
 

@@ -24,9 +24,9 @@
   /* Button hit areas reach down to this share of frame height. */
   --hit-bottom: 83%;
 
-  /* Intro zoom (wide.png -> desk.png). Re-measure from CAM_wide later. */
+  /* Intro zoom (wide.png -> desk.png), from projecting HERO_screen_* into CAM_wide. */
   --intro-scale: 3;
-  --intro-origin: 44% 58%;
+  --intro-origin: 44.3% 58.4%;
   --intro-ms: 1200ms;
 }
 
