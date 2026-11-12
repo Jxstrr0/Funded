@@ -1,5 +1,5 @@
 // Firm rules and account maths. Pure: no DOM, no timers.
-import { TIER1 } from './config.js';
+import { TIER1, PERKS } from './config.js';
 
 export const RULE_TEXT = {
   dailyLoss: { name: 'Daily loss limit', detail: (r) => `You lost $${r.dailyLossLimit.toLocaleString('en-US')} in one day, counting open P&L.` },
@@ -9,9 +9,20 @@ export const RULE_TEXT = {
   minDays: { name: 'Minimum trading days', detail: (r) => `You need at least ${r.minTradingDays} days with a trade.` },
 };
 
-export function newRun(rules = TIER1, seed = (Math.random() * 2 ** 32) >>> 0) {
+/** Tier rules with the run's perks applied (Thick Skin widens the daily loss limit). */
+export function effectiveRules(perks = [], rules = TIER1) {
+  const out = { ...rules };
+  const thick = PERKS.find((p) => p.id === 'thickSkin');
+  if (perks.includes('thickSkin')) out.dailyLossLimit = Math.round(rules.dailyLossLimit * (1 + thick.lossBuffer));
+  return out;
+}
+
+export function newRun(rules = TIER1, seed = (Math.random() * 2 ** 32) >>> 0, perks = []) {
+  const mull = PERKS.find((p) => p.id === 'mulligan');
   return {
     seed,
+    perks: [...perks],       // snapshot at run start
+    mulligans: perks.includes('mulligan') ? mull.uses : 0,
     day: 1,                  // 1-based day number
     balance: rules.startBalance,
     highEod: rules.startBalance,
@@ -112,4 +123,20 @@ export function closeDay(run, day, rules = TIER1) {
   else if (rules.minTradingDays - daysCounted > rules.evalDays - run.day) outcome = 'failMinDays';
   if (outcome === 'next') next.day = run.day + 1;
   return { run: next, outcome, result };
+}
+
+/**
+ * Mulligan: forgive one rule break. The caller flattens the position and locks
+ * the desk for the rest of the day. If equity sits at or below the drawdown
+ * floor, the floor drops to leave `floorRoom` below the balance (and the
+ * high-water mark follows, so the floor doesn't snap back at the close).
+ */
+export function applyMulligan(run, balance, rules = TIER1) {
+  const room = PERKS.find((p) => p.id === 'mulligan').floorRoom;
+  const next = { ...run, mulligans: run.mulligans - 1 };
+  if (balance <= run.floor) {
+    next.floor = balance - room;
+    next.highEod = next.floor + rules.trailingDrawdown;
+  }
+  return next;
 }

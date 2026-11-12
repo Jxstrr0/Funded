@@ -66,18 +66,20 @@ function scheduleNews(rng, session, engine) {
  * Generate a full trading day up front.
  * @returns {{seed, ticker, open, ticks: Float64Array, news: Array, regimes: string[]}}
  */
-export function generateDay({ seed, dayStartBalance = TIER1.startBalance, session = SESSION, engine = ENGINE, rules = TIER1 }) {
+export function generateDay({ seed, dayStartBalance = TIER1.startBalance, session = SESSION, engine = ENGINE, rules = TIER1, script = null }) {
   const rng = mulberry32(seed);
   const tpc = session.ticksPerCandle;
   const nTicks = session.candles * tpc;
-  const ticker = pick(rng, TICKERS);
-  const open = round2(engine.priceMin + rng() * (engine.priceMax - engine.priceMin));
+  let ticker = pick(rng, TICKERS);
+  let open = round2(engine.priceMin + rng() * (engine.priceMax - engine.priceMin));
+  if (script?.ticker) ticker = script.ticker;
+  if (script?.open) open = script.open;
 
   // News: times known up front, headline/direction revealed when they land.
   const cap = shockCapPct(dayStartBalance, rules, engine);
   const n = engine.news;
   const used = new Set();
-  const news = scheduleNews(rng, session, engine).map((candle) => {
+  let news = scheduleNews(rng, session, engine).map((candle) => {
     const dir = rng() < 0.5 ? 1 : -1;
     const pool = dir > 0 ? HEADLINES.up : HEADLINES.down;
     let headline = pick(rng, pool);
@@ -88,19 +90,27 @@ export function generateDay({ seed, dayStartBalance = TIER1.startBalance, sessio
     const followTotal = Math.abs(jump) * dir * (n.followMinShareOfJump + (n.followMaxShareOfJump - n.followMinShareOfJump) * rng());
     return { candle, tick: candle * tpc, dir, headline, jump, followTicks, followTotal };
   });
+  if (script?.news) {
+    // Scripted day (tutorial): fixed news, jump as a share of the cap.
+    news = script.news.map((e) => {
+      const followTicks = tpc * n.followCandlesMin;
+      const jump = e.dir * cap * (e.jumpShare ?? 0.8);
+      return { candle: e.candle, tick: e.candle * tpc, dir: e.dir, headline: e.headline, jump, followTicks, followTotal: jump * 0.5 };
+    });
+  }
   const newsAt = new Map(news.map((e) => [e.tick, e]));
 
-  const sigma = engine.dailyVol / Math.sqrt(nTicks);
+  const sigma = (engine.dailyVol / Math.sqrt(nTicks)) * (script?.volScale ?? 1);
   const driftPerTick = engine.trendMovePerCandle / tpc;
   const ticks = new Float64Array(nTicks);
   const regimes = [];
-  let regime = pickRegime(rng, engine.regimes);
+  let regime = script?.regime ?? pickRegime(rng, engine.regimes);
   let logp = Math.log(open);
   let follow = null; // { left, perTick, total }
 
   for (let i = 0; i < nTicks; i++) {
     if (i % tpc === 0) {
-      if (i > 0 && rng() > engine.regimeStay) regime = pickRegime(rng, engine.regimes, regime);
+      if (i > 0 && !script?.regime && rng() > engine.regimeStay) regime = pickRegime(rng, engine.regimes, regime);
       regimes.push(regime);
     }
     const R = engine.regimes[regime];
@@ -152,4 +162,22 @@ export function candlesUpTo(day, tickIndex, session = SESSION) {
     out.push({ o, h, l, c: day.ticks[end] });
   }
   return out;
+}
+
+/**
+ * Level 2 order book at a tick (the Level 2 perk). Bid/ask pressure leans
+ * toward the next candle's move, with seeded noise. It never looks past the
+ * next news shock: that's Newswire's job.
+ */
+export function bookAt(day, tick, session = SESSION) {
+  const last = day.ticks.length - 1;
+  const i = Math.max(0, Math.min(tick, last));
+  const nextNews = day.news.find((e) => e.tick > i);
+  const j = Math.min(i + session.ticksPerCandle, last, nextNews ? nextNews.tick - 1 : last);
+  const r = Math.log(day.ticks[j] / day.ticks[i]);
+  const rng = mulberry32(hashSeed(day.seed, 'l2', Math.floor(i / 6)));
+  const noise = (rng() - 0.5) * 0.3;
+  const bidPct = Math.max(0.12, Math.min(0.88, 0.5 + Math.tanh(r / 0.003) * 0.3 + noise));
+  const depth = 2000 + rng() * 6000;
+  return { bid: Math.round(depth * bidPct), ask: Math.round(depth * (1 - bidPct)), bidPct };
 }

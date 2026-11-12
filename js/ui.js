@@ -49,7 +49,10 @@ export function initUI(handlers) {
     sizes: $('sizes'),
     buy: $('buyBtn'), sell: $('sellBtn'), flat: $('flatBtn'),
     cardLayer: $('cardLayer'), card: $('card'),
+    l2: $('l2'), coach: $('coach'), coachText: $('coachText'), coachNext: $('coachNext'),
+    chartWrap: document.querySelector('.chart-wrap'), meters: document.querySelector('.meters'),
   };
+  el.coachNext.addEventListener('click', () => coachNextFn?.());
 
   // Size selector.
   TIER1.sizes.forEach((s, i) => {
@@ -115,26 +118,48 @@ export function shake() {
 
 // ---------- top monitor ----------
 
-export function renderMarket({ ticker, last, open, minute, day, evalDays }) {
+export function renderMarket({ ticker, last, open, minute, dayLabel }) {
   el.sym.textContent = ticker;
   el.px.textContent = last.toFixed(2);
   const c = signedPct(last / open - 1);
   el.chg.textContent = c.text;
   el.chg.className = 'chg ' + c.cls;
   el.clock.textContent = clockText(minute);
-  el.dayNum.textContent = `Day ${day} of ${evalDays}`;
+  el.dayNum.textContent = dayLabel;
 }
 
 let newsTimer = 0;
-export function showNews(ev) {
+export function showNews(ev, { early = 0 } = {}) {
   el.news.hidden = false;
-  el.news.className = 'news-banner ' + (ev.dir > 0 ? 'up' : 'down');
-  el.news.textContent = `${ev.dir > 0 ? '▲' : '▼'} NEWS: ${ev.headline}`;
+  el.news.className = 'news-banner ' + (ev.dir > 0 ? 'up' : 'down') + (early ? ' early' : '');
+  el.news.textContent = `${ev.dir > 0 ? '▲' : '▼'} ${early ? `NEWSWIRE · in ${early}s` : 'NEWS'}: ${ev.headline}`;
   // restart the flash animation
   el.news.style.animation = 'none'; void el.news.offsetWidth; el.news.style.animation = '';
   clearTimeout(newsTimer);
   newsTimer = setTimeout(() => { el.news.hidden = true; }, 5000);
 }
+/** Neutral notice in the news slot (e.g. Mulligan used). */
+export function showNotice(text) {
+  el.news.hidden = false;
+  el.news.className = 'news-banner';
+  el.news.style.color = 'var(--lilac)';
+  el.news.textContent = text;
+  clearTimeout(newsTimer);
+  newsTimer = setTimeout(() => { el.news.hidden = true; el.news.style.color = ''; }, 6000);
+}
+
+export function renderL2(book) {
+  if (!book) { el.l2.hidden = true; return; }
+  el.l2.hidden = false;
+  const k = (n) => (n >= 1000 ? (n / 1000).toFixed(1) + 'k' : String(n));
+  const pct = Math.round(book.bidPct * 100);
+  el.l2.innerHTML =
+    `<span class="tag">L2</span><span class="up">BID ${k(book.bid)}</span>` +
+    `<span class="bar"><i style="width:${pct}%"></i></span>` +
+    `<span class="down">${k(book.ask)} ASK</span>` +
+    `<span>${pct >= 50 ? '▲' : '▼'} ${pct}%</span>`;
+}
+
 export function hideNews() { clearTimeout(newsTimer); el.news.hidden = true; }
 
 export function setBell(secondsLeft, holding) {
@@ -177,7 +202,9 @@ export function renderDesk(snap, day, sizeIndex) {
   meter(el.mDd, snap.ddUsed, 'dd');
   meter(el.mTgt, snap.targetProgress, 'target');
 
-  if (day.qty === 0) {
+  if (day.qty === 0 && day.locked) {
+    el.pos.innerHTML = `<span class="side">DESK LOCKED</span><span class="muted">mulligan used</span>`;
+  } else if (day.qty === 0) {
     el.pos.innerHTML = `<span class="side muted">FLAT</span><span class="muted">no position</span>`;
   } else {
     const side = day.qty > 0 ? 'LONG' : 'SHORT';
@@ -197,6 +224,38 @@ export function setTradingEnabled(on) {
 
 export function flashDenied(text) {
   el.pos.innerHTML = `<span class="side">${esc(text)}</span>`;
+}
+
+// ---------- tutorial coach ----------
+
+let coachNextFn = null;
+let coachTarget = null;
+
+/** Point at `target` (an element or element name) with a bubble. `onNext` shows a Next button. */
+export function showCoach(target, html, onNext = null) {
+  hideCoach();
+  const t = typeof target === 'string' ? el[target] : target;
+  coachTarget = t;
+  t?.classList.add('coach-focus');
+  el.coachText.innerHTML = html;
+  el.coachNext.hidden = !onNext;
+  coachNextFn = onNext;
+  el.coach.hidden = false;
+  // Place the bubble above or below the target, inside the frame.
+  const fr = el.frame.getBoundingClientRect();
+  const tr = t ? t.getBoundingClientRect() : fr;
+  const ch = el.coach.offsetHeight;
+  const gap = fr.width * 0.03;
+  const below = tr.bottom + gap + ch < fr.bottom - gap;
+  const top = below ? tr.bottom + gap - fr.top : Math.max(gap, tr.top - gap - ch - fr.top);
+  el.coach.style.top = `${(top / fr.height) * 100}%`;
+}
+
+export function hideCoach() {
+  coachTarget?.classList.remove('coach-focus');
+  coachTarget = null;
+  coachNextFn = null;
+  el.coach.hidden = true;
 }
 
 // ---------- cards ----------

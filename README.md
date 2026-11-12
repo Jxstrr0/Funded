@@ -12,6 +12,7 @@ Play: https://funded.longlight.games (GitHub Pages, `main` branch root)
 - **Stage 2: rules engine and fired screen.** Done.
 - **Five-day eval** plays day to day in memory, with minimum days, early pass, and pass screen.
 - **Stage 3: saving.** Done. Reload resumes the day in progress, paused.
+- **Stage 4: Reputation, perks, guided first day.** Done.
 
 ## Tuning
 
@@ -19,6 +20,7 @@ Every number lives in `js/config.js`:
 
 - `TIER1`: balance, target, daily loss limit, drawdown, min days, buying-power multiplier, size buttons.
 - `SESSION`: day length (180 s), candles, ticks per candle, bell warning.
+- `PERKS`, `REPUTATION`, `TUTORIAL`: perk costs and effects, Rep formula, the scripted training day.
 - `ENGINE`: volatility, trend drift, regimes, intraday U-curve, news count, jump cap (`shockCapShareOfDailyLimit`).
 
 Screen positions are CSS variables at the top of `css/style.css` (`--top-*`, `--bot-*`, the intro zoom values).
@@ -42,6 +44,8 @@ js/chart.js       canvas candlesticks
 js/ui.js          monitor overlays, meters, cards
 js/audio.js       placeholder synth sounds
 js/save.js        localStorage save and resume
+js/meta.js        Reputation, perk shop, tutorial flag
+js/tutorial.js    guided training day
 js/main.js        boot, intro, game loop and state machine
 assets/           desk.png (gameplay), wide.png (intro)
 tests/            node:test suites for engine and rules

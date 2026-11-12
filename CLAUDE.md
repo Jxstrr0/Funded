@@ -36,7 +36,8 @@ Read this at the start of every session. The full design spec is `docs/HANDOFF.m
 
 - Stages 1–2 done (PR #1), plus the five-day eval.
 - Stage 3 done: run state saves to localStorage (`js/save.js`), and a mid-day reload resumes paused at the same moment. A firing clears the save.
-- Next: **stage 4**, Reputation, perks and the guided first day.
+- Stage 4 done: Reputation (`js/meta.js`, 10 per day survived + 1 per $50 of the best green day + 50 for a pass), a perk shop with the handoff's four perks (Thick Skin 60, Newswire 80, Level 2 120, Mulligan 150, all one-time buys applied from the next eval), and the guided training day (`js/tutorial.js`), which runs first and can be replayed from the title.
+- Next: **stage 5**, the futures tier. Its arcade design is still open (handoff §12), so ask the owner first.
 - Update this section when a stage lands.
 
 ## Verifying changes
