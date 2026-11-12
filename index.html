@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+  <meta name="theme-color" content="#141413">
+  <title>Funded</title>
+  <meta name="description" content="Funded: a roguelike prop-firm trading game by Longlight Interactive.">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/style.css">
+  <link rel="preload" as="image" href="assets/wide.png">
+  <link rel="preload" as="image" href="assets/desk.png">
+</head>
+<body>
+  <main class="frame" id="frame">
+    <img class="bg bg-wide" id="bgWide" src="assets/wide.png" alt="">
+    <img class="bg bg-desk" id="bgDesk" src="assets/desk.png" alt="">
+
+    <!-- Top monitor: market -->
+    <section class="screen screen-top" id="screenTop" aria-label="Market">
+      <header class="mkt-head">
+        <span class="sym" id="sym">----</span>
+        <span class="px" id="px">0.00</span>
+        <span class="chg" id="chg"></span>
+        <span class="spacer"></span>
+        <span class="clock" id="clock">9:30</span>
+        <span class="daynum" id="dayNum">Day 1 of 5</span>
+        <button class="pause-btn" id="pauseBtn" aria-label="Pause"><i></i><i></i></button>
+      </header>
+      <div class="chart-wrap">
+        <canvas id="chart"></canvas>
+        <div class="news-banner" id="newsBanner" hidden></div>
+        <div class="bell" id="bell" hidden></div>
+      </div>
+      <div class="paused" id="paused" hidden>
+        <div class="paused-title">Paused</div>
+        <div class="paused-sub">Tap to resume</div>
+      </div>
+    </section>
+
+    <!-- Bottom monitor: desk -->
+    <section class="screen screen-bottom" id="screenBottom" aria-label="Desk">
+      <div class="acct">
+        <span>BAL <b id="bal">$25,000</b></span>
+        <span>DAY <b id="dayPnl">$0</b></span>
+      </div>
+      <div class="meters">
+        <div class="meter" id="mLoss"><div class="m-label"><span>LOSS</span><b>0%</b></div><div class="m-bar"><i></i></div></div>
+        <div class="meter" id="mDd"><div class="m-label"><span>DD</span><b>0%</b></div><div class="m-bar"><i></i></div></div>
+        <div class="meter target" id="mTgt"><div class="m-label"><span>TGT</span><b>0%</b></div><div class="m-bar"><i></i></div></div>
+      </div>
+      <div class="pos" id="pos">FLAT</div>
+      <div class="sizes" id="sizes" role="radiogroup" aria-label="Order size"></div>
+      <div class="actions">
+        <button class="act buy" id="buyBtn">BUY</button>
+        <button class="act sell" id="sellBtn">SELL</button>
+        <button class="act flat" id="flatBtn">FLATTEN</button>
+      </div>
+    </section>
+
+    <!-- Full-frame cards: title, day open, summary, fired, pass -->
+    <div class="card-layer" id="cardLayer" hidden>
+      <div class="card" id="card"></div>
+    </div>
+  </main>
+  <script type="module" src="js/main.js"></script>
+</body>
+</html>
