@@ -131,6 +131,7 @@ export function setTimeOfDay(share) {
 export function setDeskProps(tier, edges = []) {
   const box = $('props');
   const layout = EDGE_PROPS.layout[tier] || {};
+  const order = Object.keys(layout);
   const want = edges.filter((id) => layout[id]);
   const key = tier + ':' + want.join(',');
   if (box.dataset.key === key) return;
@@ -144,7 +145,7 @@ export function setDeskProps(tier, edges = []) {
     img.className = 'prop';
     img.alt = '';
     img.dataset.key = k;
-    img.style.cssText = `left:${r.l}%;top:${r.t}%;width:${r.w}%;height:${r.h}%`;
+    img.style.cssText = `left:${r.l}%;top:${r.t}%;width:${r.w}%;height:${r.h}%;z-index:${order.indexOf(id) + 1}`;
     img.onload = () => requestAnimationFrame(() => img.classList.add('in'));
     img.onerror = () => img.remove();
     img.src = `${EDGE_PROPS.dir}/${tier}/${id}.webp`;

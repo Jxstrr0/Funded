@@ -130,11 +130,49 @@ export const WEATHER = {
 
 // Edges on the desk: each edge the career holds puts its prop on the desk
 // (images in assets/props/<tier>/<edge id>.webp, card art in assets/cards/).
-// Positions are percent of the 9:16 frame: left, top, width, height.
+// Positions are percent of the 9:16 frame: left, top, width, height, measured
+// by art/build_props.py. Listed back to front: later ones draw on top.
 export const EDGE_PROPS = {
   dir: 'assets/props',
   cards: 'assets/cards',
-  layout: {},
+  layout: {
+    tier1: {
+      stopDiscipline: { l: 23.52, t: 78.91, w: 10.93, h: 5.73 },
+      shortWeek: { l: 39.26, t: 78.28, w: 18.7, h: 7.4 },
+      rewind: { l: 55.28, t: 78.28, w: 23.43, h: 6.88 },
+      coffee: { l: 0.0, t: 76.82, w: 18.43, h: 16.67 },
+      thetaShield: { l: 85.37, t: 77.66, w: 14.63, h: 15.05 },
+      tapeReader: { l: 14.63, t: 85.05, w: 19.35, h: 6.25 },
+      riskFriend: { l: 34.91, t: 85.83, w: 20.83, h: 5.94 },
+      whisper: { l: 51.76, t: 85.62, w: 17.96, h: 6.04 },
+      rainmaker: { l: 73.15, t: 84.32, w: 15.83, h: 6.3 },
+      hotHand: { l: 79.35, t: 90.36, w: 11.02, h: 6.67 },
+    },
+    tier2: {
+      stopDiscipline: { l: 24.07, t: 78.91, w: 9.63, h: 5.73 },
+      shortWeek: { l: 39.26, t: 78.33, w: 18.7, h: 7.34 },
+      rewind: { l: 55.37, t: 78.28, w: 23.33, h: 7.03 },
+      coffee: { l: 0.0, t: 75.78, w: 18.43, h: 18.02 },
+      thetaShield: { l: 85.37, t: 77.66, w: 14.63, h: 14.27 },
+      tapeReader: { l: 13.98, t: 85.05, w: 20.09, h: 6.2 },
+      riskFriend: { l: 35.65, t: 85.83, w: 19.26, h: 5.26 },
+      whisper: { l: 51.2, t: 85.62, w: 18.8, h: 6.04 },
+      rainmaker: { l: 72.31, t: 84.32, w: 16.94, h: 6.2 },
+      hotHand: { l: 79.35, t: 90.36, w: 11.3, h: 6.46 },
+    },
+    tier3: {
+      stopDiscipline: { l: 24.17, t: 78.85, w: 9.54, h: 5.89 },
+      shortWeek: { l: 39.26, t: 78.28, w: 18.7, h: 7.66 },
+      rewind: { l: 56.3, t: 78.28, w: 22.41, h: 7.81 },
+      coffee: { l: 0.0, t: 76.82, w: 18.43, h: 17.45 },
+      thetaShield: { l: 85.37, t: 77.66, w: 14.63, h: 15.16 },
+      tapeReader: { l: 14.17, t: 84.95, w: 20.19, h: 6.35 },
+      riskFriend: { l: 32.69, t: 84.9, w: 22.13, h: 6.25 },
+      whisper: { l: 51.2, t: 85.36, w: 18.15, h: 6.3 },
+      rainmaker: { l: 72.59, t: 84.32, w: 17.41, h: 8.18 },
+      hotHand: { l: 79.35, t: 90.36, w: 11.3, h: 6.93 },
+    },
+  },
 };
 
 // Time of day: each desk backdrop (say desk.jpg) can have a morning version

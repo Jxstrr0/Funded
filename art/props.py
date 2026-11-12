@@ -267,7 +267,6 @@ def steam(parent, h=0.1, col=None, seed=3, n=3, sway=0.010):
     for k in range(n):
         cu = bpy.data.curves.new("steam", "CURVE")
         cu.dimensions = "3D"
-        cu.use_uv_as_generated = False
         sp = cu.splines.new("BEZIER")
         N = 7
         sp.bezier_points.add(N - 1)
@@ -338,11 +337,6 @@ def build_stopDiscipline(col=None, loc=(0, 0, 0), rot=(0, 0, 0), size=0.06):
     vs = [bm.verts.new((R * math.cos(math.pi / 8 + i * math.pi / 4), 0, R * math.sin(math.pi / 8 + i * math.pi / 4)))
           for i in range(8)]
     bm.faces.new(vs)
-    bmesh.ops.subdivide_edges(bm, edges=list(bm.edges), cuts=8, use_grid_fill=True)
-    bmesh.ops.triangulate(bm, faces=list(bm.faces))
-    for v in bm.verts:   # the unglued lower edge curls a little toward the viewer
-        if v.co.z < 0:
-            v.co.y -= (v.co.z / R) ** 2 * 0.004
     res = bmesh.ops.extrude_face_region(bm, geom=list(bm.faces))
     for v in [g for g in res["geom"] if isinstance(g, bmesh.types.BMVert)]:
         v.co.y += 0.0004
@@ -350,22 +344,19 @@ def build_stopDiscipline(col=None, loc=(0, 0, 0), rot=(0, 0, 0), size=0.06):
     bm.to_mesh(me)
     bm.free()
     white = pmat("stop_white", "#fbf6ee", 0.7)
-    mesh_ob("stop_note", me, pmat("stop_red", "#E5484D", 0.72), parent=p, col=col)
-    t = text_ob("stop_txt", "STOP", size * 0.33, white, (0, -0.0011, -size * 0.005), parent=p, col=col)
+    mesh_ob("stop_note", me, pmat("stop_red", "#E5484D", 0.72), parent=p, col=col, smooth=False)
+    t = text_ob("stop_txt", "STOP", size * 0.33, white, (0, -0.0012, -size * 0.005), parent=p, col=col)
     t.data.space_character = 0.95
     ring = bpy.data.meshes.new("stop_border")
     bm = bmesh.new()
     o, i_ = [], []
     for k in range(8):
         a = math.pi / 8 + k * math.pi / 4
-        o.append(bm.verts.new(((R * 0.9) * math.cos(a), 0, (R * 0.9) * math.sin(a))))
-        i_.append(bm.verts.new(((R * 0.835) * math.cos(a), 0, (R * 0.835) * math.sin(a))))
+        o.append(bm.verts.new(((R * 0.9) * math.cos(a), -0.0007, (R * 0.9) * math.sin(a))))
+        i_.append(bm.verts.new(((R * 0.835) * math.cos(a), -0.0007, (R * 0.835) * math.sin(a))))
     for k in range(8):
         k2 = (k + 1) % 8
         bm.faces.new((o[k], o[k2], i_[k2], i_[k]))
-    bmesh.ops.subdivide_edges(bm, edges=list(bm.edges), cuts=3)
-    for v in bm.verts:
-        v.co.y = -0.0009 - (max(0, -v.co.z) / R) ** 2 * 0.004
     bm.to_mesh(ring)
     bm.free()
     mesh_ob("stop_border", ring, white, parent=p, col=col, smooth=False)
@@ -403,7 +394,8 @@ def build_thetaShield(col=None, loc=(0, 0, 0), rot_z=0.0, scale=1.0, flow=0.4):
             r *= 0.72 + 0.28 * (1 - (u - 0.92) / 0.08)
         prof.append((r, z))
     glass = pmat("hg_glass", "#ffffff", 0.02, trans=1.0, ior=1.45)
-    mesh_ob("hg_glass", lathe("glass", prof, n=48, cap_top=False, cap_bot=False), glass, parent=p, col=col)
+    g = mesh_ob("hg_glass", lathe("glass", prof, n=48, cap_top=False, cap_bot=False), glass, parent=p, col=col)
+    no_shadow(g)      # let light reach the sand (refractive caustics are off in the desk render)
     sand = pmat("sand", "#e7bd74", 0.85)
     top_lvl = mid + (g1 - mid) * (0.72 - flow * 0.55)
     inner = [(r * 0.9, z) for (r, z) in prof if mid + 0.003 < z < top_lvl]

@@ -63,3 +63,15 @@ Bevelled boxes are smooth-shaded with hard edges kept by angle (`smooth_bm()`), 
 ## Free to change
 
 Materials, lighting, props, background desks and the city (all in `build_scene.py`, grouped by function: `build_room`, `build_hero_desk`, `build_bg_desks`, `build_city`, `make_tower`, `make_trading_screen`). The variants are `variant_tier2`, `variant_tier3` and `variant_fired`. The background monitors use only the game's monitor palette (green #2FBF71, red #E5484D, lilac #B48CE8).
+
+## Edge props (`build_props.py`, `props.py`)
+
+Every edge card has a prop that also appears on the desk once the player owns it: rewind = cassette, hotHand = chili, stopDiscipline = STOP sticky note, tapeReader = coil of ticker tape, riskFriend = lilac donut on a napkin, shortWeek = flip calendar with a date circled, coffee = mug with steam, whisper = folded "psst" note, rainmaker = brass desk bell, thetaShield = hourglass. The models are in `props.py` (one `build_<id>()` each, fully procedural).
+
+    python3 art/build_props.py [--tiers tier1,tier2,tier3] [--ids coffee,rewind] [--samples 160] [--cards] [--card-samples 128] [--no-desk] [--check]
+
+- Desk overlays: for each tier it runs `build_scene.py --variant <tier> --hook art/build_props.py`. The hook puts every prop in its fixed slot (`SLOTS` in `build_props.py`) and checks that each vertex is either below the bottom screen (78.4% of the frame) or in a side strip (x < 11% or > 89%). It then renders each prop in a small crop of CAM_main three times: with the prop, without it, and as a matte with every other object a holdout. From these it writes `assets/props/<tier>/<id>.webp` with straight alpha and a soft contact shadow, so the prop placed over `desk-<tier>.jpg` reproduces the full render, including the keyboard hiding its lower edge. Positions go to `art/out/props/layout-<tier>.json` as % of 1080x1920 (left, top, width, height); copy them into `EDGE_PROPS.layout` in `js/config.js`. Add `--slots-only` after `--hook` to check slots without rendering.
+- The desk is the same in every tier, so the slots are identical. Only the trimmed crops differ slightly, because of shadows and light.
+- Props never overlap each other, so any combination can be shown at once. To move one, edit its slot, run with `--ids <id> --check`, and look at `art/out/props/check-<tier>.png` (needs Pillow).
+- `--cards`: 480x480 close-ups on a transparent background with a shadow-catcher floor, a warm key, a lilac and a cool rim light, AgX. Writes `assets/cards/<id>.webp`. The pose and camera height for each prop are in `CARD`.
+- Times on 4 cores at 160 samples: about 9 minutes each for tier1 and tier2, 5 for tier3, 9 for the cards. WebP is made with ffmpeg (libwebp, yuva420p, quality 85).
