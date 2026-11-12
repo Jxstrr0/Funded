@@ -145,6 +145,24 @@ export const WEATHER = {
   },
 };
 
+// The trader's hands (js/clicker.js): on touch screens a pointer glides to
+// whatever you tap on the monitors and clicks it, and the mouse on the desk
+// moves with it. Cosmetic only; orders fill on the tap.
+export const CLICKER = {
+  on: true,
+  glideMs: 160,   // pointer travel time for a medium move (longer moves take a bit more)
+  idleMs: 2500,   // the pointer fades out after this long without a tap
+  pointerRest: { x: 78, y: 70 }, // where the pointer starts, % of the frame
+  screens: { l: 12, r: 88, t: 22.5, b: 77.5 }, // the pointer stays on the glass
+  mouseTravel: { x: 0.02, y: 0.015 }, // desk mouse move per unit of pointer move
+  mouse: {
+    dir: 'assets/mouse',
+    // Crop of CAM_main around the desk mouse, % of 1080x1920 (left, top, width,
+    // height), from art/build_props.py --mouse. Empty: the mouse stays baked in.
+    layout: {},
+  },
+};
+
 // Edges on the desk: each edge the career holds puts its prop on the desk
 // (images in assets/props/<tier>/<edge id>.webp, card art in assets/cards/).
 // Positions are percent of the 9:16 frame: left, top, width, height, measured

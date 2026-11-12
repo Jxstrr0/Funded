@@ -72,6 +72,7 @@ export function setBackdrop(src, { tod = true, props = true, rain = null } = {})
   current ??= desk.getAttribute('src');
   if (todFor === null) setTodBase(current);
   $('props').classList.toggle('off', !props); // the box and the pass desk have their own props
+  $('deskMouse').classList.toggle('off', !(props && tod)); // its crops match the plain desk's light only
   setRainStreaks(rain);
   if (!src || src === current) return;
   const my = ++token;
@@ -135,6 +136,9 @@ export function setTimeOfDay(share) {
   const pm = Math.max(0, (todShare - t.pmFadeStart) / (1 - t.pmFadeStart)) * t.pmPeak;
   $('bgAm').style.opacity = am.toFixed(3);
   $('bgPm').style.opacity = pm.toFixed(3);
+  for (const n of $('deskMouse').querySelectorAll('[data-tod]')) {
+    n.style.opacity = (n.dataset.tod === 'am' ? am : pm).toFixed(3);
+  }
 }
 
 // ---------- edge props on the desk ----------

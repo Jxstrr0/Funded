@@ -11,6 +11,7 @@ import { Chart } from './chart.js';
 import * as ui from './ui.js';
 import { unlockAudio, sfx, setScene, setRain, audioMode, cycleAudioMode } from './audio.js';
 import { loadRun, saveRun, clearRun } from './save.js';
+import { initClicker, setDeskMouse } from './clicker.js';
 
 let RULES = TIER1; // tier rules with the run's perks applied
 const N_TICKS = SESSION.candles * SESSION.ticksPerCandle;
@@ -69,6 +70,7 @@ function showDesk() {
 
 function syncProps() {
   fx.setDeskProps(S.run && !S.tutorial ? S.run.tier || 'tier1' : null, S.run && !S.tutorial ? S.run.edges || [] : []);
+  setDeskMouse(S.run && !S.tutorial ? S.run.tier || 'tier1' : 'tier1');
 }
 
 /** Today's rules for the run: tier + perks + the career's edges and mandates. */
@@ -910,6 +912,7 @@ async function boot() {
     onAudio: () => { cycleAudioMode(); if (S.phase === 'title') title(); },
   });
   chart = new Chart(document.getElementById('chart'));
+  initClicker();
   // Card art that fails to load is dropped, leaving the plain text card.
   document.getElementById('card').addEventListener('error', (e) => { if (e.target.tagName === 'IMG') e.target.remove(); }, true);
   prepIntroVideo();

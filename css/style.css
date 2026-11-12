@@ -139,6 +139,41 @@ button:focus-visible { outline: 0.5cqw solid var(--lilac); outline-offset: 0.3cq
 .frame:not(.desk) .props, .frame.vid:not(.ui) .props, .props.off { opacity: 0; }
 .prop { position: absolute; opacity: 0; transform: translateY(1.2%); transition: opacity 500ms ease, transform 500ms ease; }
 .prop.in { opacity: 1; transform: none; }
+/* The desk mouse (js/clicker.js): a clean plate over the baked-in mouse, and the mouse on top */
+.desk-mouse { position: absolute; inset: 0; pointer-events: none; opacity: 0; transition: opacity 600ms ease; }
+.desk-mouse.ok { opacity: 1; }
+.frame:not(.desk) .desk-mouse, .frame.vid:not(.ui) .desk-mouse, .desk-mouse.off { opacity: 0; }
+.desk-mouse .m-layer { position: absolute; width: 100%; height: 100%; }
+.desk-mouse .m-layer[data-tod] { opacity: 0; }
+.desk-mouse .hand {
+  position: absolute;
+  transform: translate(var(--mx, 0), var(--my, 0));
+  transition: transform var(--glide, 160ms) cubic-bezier(.3, .7, .4, 1);
+}
+.desk-mouse.click .hand .m-layer { animation: mclick 160ms ease; }
+@keyframes mclick { 40% { filter: brightness(0.9); transform: translateY(0.4%); } }
+/* The pointer: ivory arrow on the monitors, touch screens only */
+.pointer {
+  position: absolute; z-index: 12; pointer-events: none;
+  width: 4.2cqw; aspect-ratio: 24 / 36;
+  background: url(../assets/pointer.svg) 0 0 / contain no-repeat;
+  filter: drop-shadow(0.3cqw 0.4cqw 0.3cqw rgba(0, 0, 0, 0.45));
+  opacity: 0;
+  transition-property: left, top, opacity;
+  transition-timing-function: cubic-bezier(.3, .7, .4, 1);
+  transform-origin: 8% 6%;
+}
+.pointer.show { opacity: 1; }
+.pointer:not(.show) { transition: opacity 500ms ease; }
+.frame:not(.ui) .pointer { display: none; }
+.pointer.click { animation: pclick 180ms ease; }
+.pointer.click::after { /* ring where it clicked */
+  content: ''; position: absolute; left: -1.6cqw; top: -1.6cqw; width: 3.6cqw; height: 3.6cqw;
+  border: 0.35cqw solid rgba(250, 249, 245, 0.8); border-radius: 50%;
+  animation: pring 360ms ease-out forwards;
+}
+@keyframes pclick { 45% { transform: scale(0.82); } }
+@keyframes pring { from { transform: scale(0.3); opacity: 1; } to { transform: scale(1.3); opacity: 0; } }
 /* Rain days: streaks falling behind the glass, one strip per window area (js/fx.js) */
 .rain { position: absolute; inset: 0; pointer-events: none; opacity: 0; transition: opacity 900ms ease; }
 .rain.on { opacity: var(--rain-strength); }
@@ -659,4 +694,6 @@ button:focus-visible { outline: 0.5cqw solid var(--lilac); outline-offset: 0.3cq
   .bg-alt { transition: none; }
   .props, .prop { transition: none; transform: none; }
   .rain { display: none; } /* the rain render already has drops on the glass */
+  .pointer { transition: opacity 200ms ease; }
+  .desk-mouse .hand { transition: none; }
 }
