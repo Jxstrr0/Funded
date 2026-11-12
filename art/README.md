@@ -5,17 +5,23 @@
 ## Run
 
 ```
-blender -b --factory-startup -P art/build_scene.py -- [--out DIR] [--samples N] [--preview] [--cams main,wide]
+blender -b --factory-startup -P art/build_scene.py -- [--out DIR] [--samples N] [--preview] [--cams main,wide] [--variant NAME]
 ```
 
 - `--out DIR`: output folder (default `art/out`). Writes `desk.png` (CAM_main) and `wide.png` (CAM_wide).
 - `--samples N`: Cycles samples (default 96; 16 with `--preview`). The OpenImageDenoise denoiser is always on.
 - `--preview`: half resolution (540x960) for quick checks.
 - `--cams`: render only some cameras, e.g. `--cams wide`.
+- `--variant NAME`: which career desk to build for the gameplay view. `tier1` (default) is the original scene and writes `desk.png` and `wide.png`. The others render only CAM_main by default and add the variant to the file name:
+  - `tier2` -> `desk-tier2.png`: mid-floor. Wing monitors at the frame edges with dim charts, the tall back partition and the pillar gone, desks right behind, a ticker board hanging over the floor, a walnut desk.
+  - `tier3` -> `desk-tier3.png`: window seat. Floor-to-ceiling glass just behind the desk, a dusk sky and skyline (with a few near towers tall enough to show above the monitors), the wing monitors, a dark stone desk.
+  - `fired` -> `desk-fired.png`: the tier1 desk cleared out, with a cardboard box of belongings (folders, a mug, a plant, a photo) in the foreground and colder, dimmer light.
+
+  Convert them like the others: `ffmpeg -y -i art/out/desk-tier2.png -q:v 3 assets/desk-tier2.jpg` (and the same for `tier3` and `fired`).
 
 Needs Blender 4.2 LTS. It renders with Cycles on the CPU (EEVEE needs a GPU). A full render takes about 5 to 9 minutes per camera on 4 cores.
 
-The script prints the measured screen rectangles for both cameras and checks them against the contract below, then ray-casts each hero screen to check that nothing hides it.
+The script prints the measured screen rectangles for both cameras and checks them against the contract below, then ray-casts each hero screen to check that nothing hides it. For a variant it also projects every added object and checks that nothing in front of the screens lands inside their rectangles; for `fired`, every part of the box must sit below the bottom screen (lower than 78.4% of the frame).
 
 ## Camera and screen contract (keep fixed)
 
@@ -39,4 +45,4 @@ Also keep the hero monitors unobstructed in CAM_wide (the intro zooms into them)
 
 ## Free to change
 
-Materials, lighting, props, background desks and the city (all in `build_scene.py`, grouped by function: `build_room`, `build_hero_desk`, `build_bg_desks`, `build_city`, `make_tower`, `make_trading_screen`). The background monitors use only the game's monitor palette (green #2FBF71, red #E5484D, lilac #B48CE8).
+Materials, lighting, props, background desks and the city (all in `build_scene.py`, grouped by function: `build_room`, `build_hero_desk`, `build_bg_desks`, `build_city`, `make_tower`, `make_trading_screen`). The variants are `variant_tier2`, `variant_tier3` and `variant_fired`. The background monitors use only the game's monitor palette (green #2FBF71, red #E5484D, lilac #B48CE8).

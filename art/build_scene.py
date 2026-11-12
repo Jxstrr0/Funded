@@ -4,6 +4,11 @@ Builds the whole trading-floor scene from Blender factory startup and renders
 both backdrops (CAM_main -> desk.png, CAM_wide -> wide.png) with Cycles on CPU.
 
     blender -b --factory-startup -P art/build_scene.py -- [--out DIR] [--samples N] [--preview]
+                                                           [--cams main,wide] [--variant tier1|tier2|tier3|fired]
+
+--variant picks the gameplay desk (CAM_main) for each career stage: tier1 (back
+row, the default and the original look), tier2 (mid-floor with wing monitors),
+tier3 (window seat over the city) or fired (tier1 desk with a packed box).
 
 Everything is procedural (no downloaded assets). See art/README.md for the
 camera/screen contract that must stay fixed.
@@ -35,7 +40,13 @@ def _arg(name, default):
 PREVIEW = "--preview" in argv
 OUT_DIR = os.path.abspath(_arg("--out", os.path.join(HERE, "out")))
 SAMPLES = int(_arg("--samples", 16 if PREVIEW else 96))
-CAMS = _arg("--cams", "main,wide").split(",")   # optional: render only some cameras
+VARIANT = _arg("--variant", "tier1")
+VARIANTS = ("tier1", "tier2", "tier3", "fired")
+if VARIANT not in VARIANTS:
+    raise SystemExit(f"--variant must be one of {', '.join(VARIANTS)}")
+# Variants only change the gameplay view, so they render CAM_main unless asked otherwise.
+CAMS = _arg("--cams", "main,wide" if VARIANT == "tier1" else "main").split(",")
+SUFFIX = "" if VARIANT == "tier1" else "-" + VARIANT     # desk.png / desk-tier2.png ...
 
 # ---------------------------------------------------------------------------
 # Contract (do not change: the game overlays its UI on the hero screens)
@@ -335,9 +346,9 @@ def make_screen_hero():
     return m
 
 
-def make_trading_screen():
+def make_trading_screen(name="bg_screen", strength=0.85):
     """Procedural trading screen: candles or a line chart, plus an order-book strip."""
-    m = bpy.data.materials.new("bg_screen")
+    m = bpy.data.materials.new(name)
     nb = NB(m)
     tc = nb.node("ShaderNodeTexCoord")
     oi = nb.node("ShaderNodeObjectInfo")
@@ -409,13 +420,14 @@ def make_trading_screen():
     # small lilac accent tick on the header
     acc = nb.m("MULTIPLY", header, nb.between(u, 0.04, 0.12))
     col = nb.mix(nb.m("MULTIPLY", acc, 0.8), col, lilac)
-    nb.output(nb.emission(col, 0.85))
+    nb.output(nb.emission(col, strength))
     return m
 
 
-def make_tower():
+def make_tower(name="tower", lit_base=0.80, haze_col="#b9c8dc", tones=("#24354f", "#3f5274"),
+               glass_cols=("#1c2a42", "#3d5273"), haze_start=50.0, haze_len=240.0):
     """Unlit stylised tower facade with a procedural window grid and depth haze."""
-    m = bpy.data.materials.new("tower")
+    m = bpy.data.materials.new(name)
     nb = NB(m)
     geo = nb.node("ShaderNodeNewGeometry")
     oi = nb.node("ShaderNodeObjectInfo")
@@ -440,32 +452,35 @@ def make_tower():
     win = nb.m("MULTIPLY", win, vertical)
 
     cell = nb.white(vec=nb.comb(ch, cz, seed), dims="3D")
-    lit_thr = nb.m("ADD", 0.80, nb.m("MULTIPLY", nb.white(w=nb.m("ADD", seed, 1.7))[0], 0.12))
+    lit_thr = nb.m("ADD", lit_base, nb.m("MULTIPLY", nb.white(w=nb.m("ADD", seed, 1.7))[0], 0.12))
     lit = nb.m("GREATER_THAN", cell[0], lit_thr)
     warm = nb.m("GREATER_THAN", nb.sep(cell[1])[0], 0.45)
     lit_col = nb.mix(warm, "#dfe9ff", "#ffc77a")
 
     # facade tone: per-tower slate, simple directional facet shading
-    tone = nb.mix(rnd, "#24354f", "#3f5274")
+    tone = nb.mix(rnd, tones[0], tones[1])
     shade = nb.m("ADD", 0.82, nb.m("MULTIPLY", Nn[0], 0.22))
     shade = nb.m("ADD", shade, nb.m("MULTIPLY", nb.m("MAXIMUM", Nn[2], 0.0), 0.15))
     facade = nb.mix(nb.m("SUBTRACT", 1.0, shade), tone, "#0d1524")
     # dark glass with a faint sky reflection rising with height
-    glass = nb.mix(nb.m("MULTIPLY", rz, 0.7), "#1c2a42", "#3d5273")
+    glass = nb.mix(nb.m("MULTIPLY", rz, 0.7), glass_cols[0], glass_cols[1])
     col = nb.mix(win, facade, glass)
     col = nb.mix(nb.m("MULTIPLY", win, lit), col, nb.mul_col(lit_col, (1.8, 1.8, 1.8, 1)))
 
     # atmospheric haze by camera distance, stronger low down
     d = cam.outputs["View Distance"]
-    haze = nb.m("SUBTRACT", 1.0, nb.m("EXPONENT", nb.m("DIVIDE", nb.m("MAXIMUM", nb.m("SUBTRACT", d, 50.0), 0.0), -240.0)))
+    haze = nb.m("SUBTRACT", 1.0, nb.m("EXPONENT", nb.m("DIVIDE", nb.m("MAXIMUM", nb.m("SUBTRACT", d, haze_start), 0.0), -haze_len)))
     low = nb.m("MULTIPLY", nb.m("MINIMUM", nb.m("MAXIMUM", nb.m("DIVIDE", P[2], -140.0), 0.0), 1.0), 0.35)
     haze = nb.m("MINIMUM", nb.m("ADD", haze, low), 0.97)
-    col = nb.mix(haze, col, "#b9c8dc")
+    col = nb.mix(haze, col, haze_col)
     nb.output(nb.emission(col, 1.0))
     return m
 
 
-def make_world():
+DAY_SKY = [(0.0, "#b4c3d8"), (0.35, "#5f7fae"), (0.04, "#d9d4d6"), (0.12, "#a9bcd7")]
+
+
+def make_world(sky=DAY_SKY, amb_col="#6d84a8", amb_str=0.35):
     w = bpy.data.worlds.new("World")
     scene.world = w
     w.use_nodes = True
@@ -478,20 +493,17 @@ def make_world():
     ramp = nt.nodes.new("ShaderNodeValToRGB")
     nt.links.new(sep.outputs[2], ramp.inputs[0])
     els = ramp.color_ramp.elements
-    els[0].position = 0.0
-    els[0].color = hex_lin("#b4c3d8")
-    els[1].position = 0.35
-    els[1].color = hex_lin("#5f7fae")
-    e = els.new(0.04)
-    e.color = hex_lin("#d9d4d6")    # faint warm band at the horizon
-    e = els.new(0.12)
-    e.color = hex_lin("#a9bcd7")
+    # (position, colour) stops; the day sky has a faint warm band at the horizon
+    for k, (pos, col) in enumerate(sky):
+        e = els[k] if k < 2 else els.new(pos)
+        e.position = pos
+        e.color = hex_lin(col)
     sky = nt.nodes.new("ShaderNodeBackground")
     nt.links.new(ramp.outputs[0], sky.inputs[0])
     sky.inputs[1].default_value = 1.0
     amb = nt.nodes.new("ShaderNodeBackground")
-    amb.inputs[0].default_value = hex_lin("#6d84a8")
-    amb.inputs[1].default_value = 0.35
+    amb.inputs[0].default_value = hex_lin(amb_col)
+    amb.inputs[1].default_value = amb_str
     lp = nt.nodes.new("ShaderNodeLightPath")
     mix = nt.nodes.new("ShaderNodeMixShader")
     nt.links.new(lp.outputs["Is Camera Ray"], mix.inputs[0])
@@ -586,21 +598,22 @@ ROOM_Y0, ROOM_Y1 = -6.0, 9.5
 CEIL = 3.0
 
 
-def build_room():
-    box("floor", (2 * ROOM_X, ROOM_Y1 - ROOM_Y0, 0.1), (0, (ROOM_Y0 + ROOM_Y1) / 2, -0.05), M["carpet"])
-    box("ceiling", (2 * ROOM_X, ROOM_Y1 - ROOM_Y0, 0.1), (0, (ROOM_Y0 + ROOM_Y1) / 2, CEIL + 0.05), M["ceiling"])
+def build_room(Y1=ROOM_Y1, pillar=True):
+    """Office shell. Y1 is the window wall (tier3 brings it right up behind the hero desk)."""
+    box("floor", (2 * ROOM_X, Y1 - ROOM_Y0, 0.1), (0, (ROOM_Y0 + Y1) / 2, -0.05), M["carpet"])
+    box("ceiling", (2 * ROOM_X, Y1 - ROOM_Y0, 0.1), (0, (ROOM_Y0 + Y1) / 2, CEIL + 0.05), M["ceiling"])
     for sx in (-1, 1):
-        box("wall_side", (0.2, ROOM_Y1 - ROOM_Y0, CEIL), (sx * (ROOM_X + 0.1), (ROOM_Y0 + ROOM_Y1) / 2, CEIL / 2), M["wall"])
+        box("wall_side", (0.2, Y1 - ROOM_Y0, CEIL), (sx * (ROOM_X + 0.1), (ROOM_Y0 + Y1) / 2, CEIL / 2), M["wall"])
     box("wall_back", (2 * ROOM_X, 0.2, CEIL), (0, ROOM_Y0 - 0.1, CEIL / 2), M["wall"])
 
     # ceiling grid lines (stylised tiles)
     for i in range(-7, 8):
-        b = box("ceil_grid", (0.025, ROOM_Y1 - ROOM_Y0, 0.01), (i * 1.2, (ROOM_Y0 + ROOM_Y1) / 2, CEIL - 0.004), M["trim"])
-    for j in range(int((ROOM_Y1 - ROOM_Y0) / 1.2) + 1):
+        b = box("ceil_grid", (0.025, Y1 - ROOM_Y0, 0.01), (i * 1.2, (ROOM_Y0 + Y1) / 2, CEIL - 0.004), M["trim"])
+    for j in range(int((Y1 - ROOM_Y0) / 1.2) + 1):
         box("ceil_grid", (2 * ROOM_X, 0.025, 0.01), (0, ROOM_Y0 + j * 1.2, CEIL - 0.004), M["trim"])
 
     # window wall: glass, mullions, sill, soffit beam
-    wy = ROOM_Y1
+    wy = Y1
     g = plane_xz("window_glass", 2 * ROOM_X, CEIL, (0, wy + 0.02, CEIL / 2), M["glass"])
     g.visible_shadow = False
     box("sill", (2 * ROOM_X, 0.35, 0.22), (0, wy - 0.1, 0.11), M["skirting"])
@@ -613,13 +626,16 @@ def build_room():
 
     # big square pillar
     px, py, ps = 0.95, 3.0, 0.9
-    box("pillar", (ps, ps, CEIL), (px, py, CEIL / 2), M["pillar"], bevel=0.02)
-    box("pillar_base", (ps + 0.03, ps + 0.03, 0.1), (px, py, 0.05), M["skirting"])
+    if pillar:
+        box("pillar", (ps, ps, CEIL), (px, py, CEIL / 2), M["pillar"], bevel=0.02)
+        box("pillar_base", (ps + 0.03, ps + 0.03, 0.1), (px, py, 0.05), M["skirting"])
 
     # ceiling light panels (camera-visible emitters) + area lights doing the lighting
     lc = coll("Lights")
     for ix in (-6.0, -3.6, -1.2, 1.2, 3.6, 6.0):
         for iy in (-3.2, -0.8, 1.6, 4.0, 6.4, 8.4):
+            if iy > Y1 - 0.4:
+                continue
             p = box("light_panel", (1.2, 0.6, 0.02), (ix, iy, CEIL - 0.012), M["panel"])
             camera_only(p)
             box("light_frame", (1.26, 0.66, 0.012), (ix, iy, CEIL - 0.004), M["trim"])
@@ -683,14 +699,18 @@ def chair_instance(name, loc, rot_z, src, collection="Office"):
     return e
 
 
-def monitor(name, center, w, h, screen_mat, collection="Office", bezel=0.015, depth=0.03):
-    """Monitor housing whose front face sits just behind a screen plane at `center`."""
+def monitor(name, center, w, h, screen_mat, collection="Office", bezel=0.015, depth=0.03, parent=None):
+    """Monitor housing whose front face sits just behind a screen plane at `center`
+    (in the parent's space when `parent` is given)."""
     x, y, z = center
     hb = box(name + "_housing", (w + 2 * bezel, depth, h + 2 * bezel), (x, y + 0.003 + depth / 2, z),
              M["housing"], bevel=0.006, collection=collection)
     back = box(name + "_back", (w * 0.6, 0.03, h * 0.55), (x, y + depth + 0.015, z), M["housing"],
                bevel=0.01, collection=collection)
     scr = plane_xz(name, w, h, (x, y, z), screen_mat, collection=collection)
+    if parent is not None:
+        for ob in (hb, back, scr):
+            ob.parent = parent
     return scr
 
 
@@ -828,9 +848,9 @@ def build_hero_desk():
     return top, bot
 
 
-def build_bg_desks(chair_src):
+def build_bg_desks(chair_src, open_floor=False, rows=(1.75, 3.55, 5.35, 7.15)):
+    """Rows of desks facing the camera. open_floor drops the gaps for the hero desk and the pillar."""
     rng = random.Random(11)
-    rows = [1.75, 3.55, 5.35, 7.15]
     C = "Floor"
     desk_w = 1.5
     for ri, ry in enumerate(rows):
@@ -839,10 +859,11 @@ def build_bg_desks(chair_src):
         while x + desk_w <= ROOM_X - 0.3:
             cx = x + desk_w / 2
             x += desk_w + 0.06
-            if ri == 0 and abs(cx) < 1.1:
-                continue
-            if ri in (0, 1) and 0.25 < cx + desk_w / 2 and cx - desk_w / 2 < 1.65:
-                continue   # pillar
+            if not open_floor:
+                if ri == 0 and abs(cx) < 1.1:
+                    continue
+                if ri in (0, 1) and 0.25 < cx + desk_w / 2 and cx - desk_w / 2 < 1.65:
+                    continue   # pillar
             top_y0, top_y1 = ry - 0.4, ry + 0.4
             box("bg_desk", (desk_w, 0.8, 0.035), (cx, ry, DESK_H - 0.0175), M["desk_top"], bevel=0.006, collection=C)
             for sx in (-1, 1):
@@ -921,6 +942,309 @@ def build_city():
 
 
 # ---------------------------------------------------------------------------
+# Career variants of the gameplay desk (--variant). tier1 builds none of this.
+# ---------------------------------------------------------------------------
+def remove_objects(names):
+    """Delete objects whose base name (before any .001 suffix) is in `names`."""
+    for ob in list(bpy.data.objects):
+        if ob.name.split(".")[0] in names:
+            bpy.data.objects.remove(ob, do_unlink=True)
+
+
+def set_mat(name, mat):
+    for ob in bpy.data.objects:
+        if ob.name.split(".")[0] == name:
+            ob.material_slots[0].material = mat
+
+
+def make_ticker():
+    """LED ticker board: one line of blocky glyphs in the monitor palette, lilac rules top and bottom."""
+    m = bpy.data.materials.new("ticker")
+    nb = NB(m)
+    tc = nb.node("ShaderNodeTexCoord")
+    uvs = nb.sep(tc.outputs["UV"])
+    u, v = uvs[0], uvs[1]
+    cu = nb.m("MULTIPLY", u, 150.0)                 # character cells along the board
+    ci = nb.m("FLOOR", cu)
+    px = nb.m("FLOOR", nb.m("MULTIPLY", nb.m("FRACT", cu), 4.0))      # 3 lit columns + 1 gap
+    tv = nb.m("DIVIDE", nb.m("SUBTRACT", v, 0.24), 0.52)
+    py = nb.m("FLOOR", nb.m("MULTIPLY", tv, 5.0))
+    in_row = nb.between(tv, 0.0, 1.0)
+    dot = nb.m("GREATER_THAN", nb.white(vec=nb.comb(ci, px, py), dims="3D")[0], 0.45)
+    word = nb.m("FLOOR", nb.m("DIVIDE", ci, 7.0))
+    space = nb.m("LESS_THAN", nb.m("FRACT", nb.m("DIVIDE", ci, 7.0)), 0.13)
+    glyph = nb.m("MULTIPLY", nb.m("MULTIPLY", dot, nb.m("LESS_THAN", px, 2.5)), in_row)
+    glyph = nb.m("MULTIPLY", glyph, nb.m("SUBTRACT", 1.0, space))
+    pick = nb.white(w=word)[0]
+    col = nb.mix(nb.m("GREATER_THAN", pick, 0.38), "#E5484D", "#2FBF71")
+    col = nb.mix(nb.m("LESS_THAN", pick, 0.16), col, "#efe9dc")      # ivory symbols
+    rule = nb.m("MAXIMUM", nb.m("LESS_THAN", v, 0.07), nb.m("GREATER_THAN", v, 0.93))
+    out = nb.mix(glyph, "#081226", col)
+    out = nb.mix(nb.m("MULTIPLY", rule, 0.7), out, "#B48CE8")
+    nb.output(nb.emission(out, 1.1))
+    return m
+
+
+def make_kraft():
+    m = bpy.data.materials.new("kraft")
+    nb = NB(m)
+    tc = nb.node("ShaderNodeTexCoord")
+    o = nb.sep(tc.outputs["Object"])
+    fib = nb.noise(vec=nb.comb(nb.m("MULTIPLY", o[0], 3.0), nb.m("MULTIPLY", o[1], 3.0), nb.m("MULTIPLY", o[2], 60.0)),
+                   dims="3D", scale=30.0, detail=3.0)
+    blot = nb.noise(vec=tc.outputs["Object"], dims="3D", scale=8.0, detail=2.0)
+    col = nb.mix(nb.m("MULTIPLY", fib[0], 0.6), "#a27547", "#b98d5c")
+    col = nb.mix(nb.m("MULTIPLY", blot[0], 0.35), col, "#8f6339")
+    nb.output(nb.principled(col, 0.9, spec=0.25))
+    return m
+
+
+def make_photo():
+    """Desk photo: an abstract sunset over hills (no people)."""
+    m = bpy.data.materials.new("photo")
+    nb = NB(m)
+    tc = nb.node("ShaderNodeTexCoord")
+    uvs = nb.sep(tc.outputs["UV"])
+    u, v = uvs[0], uvs[1]
+    sky = nb.mix(v, "#f1b37e", "#6f86c4")
+    d = nb.node("ShaderNodeVectorMath", operation="DISTANCE")
+    nb.link(d.inputs[0], tc.outputs["UV"])
+    d.inputs[1].default_value = (0.68, 0.55, 0.0)
+    sun = nb.m("LESS_THAN", d.outputs[1], 0.11)
+    col = nb.mix(sun, sky, "#fff1cf")
+    hill = nb.m("ADD", 0.38, nb.m("MULTIPLY", nb.m("SINE", nb.m("MULTIPLY", u, 5.5)), 0.08))
+    col = nb.mix(nb.m("LESS_THAN", v, hill), col, "#3f6f5a")
+    hill2 = nb.m("ADD", 0.22, nb.m("MULTIPLY", nb.m("SINE", nb.m("ADD", nb.m("MULTIPLY", u, 3.7), 1.3)), 0.07))
+    col = nb.mix(nb.m("LESS_THAN", v, hill2), col, "#2c4d45")
+    nb.output(nb.principled(col, 0.35, coat=0.4))
+    return m
+
+
+def build_wing_monitors(strength=0.3):
+    """Two angled wing monitors flanking the hero pair, tucked behind its housing.
+    Only their inner edges reach into frame, at the left and right edges of CAM_main."""
+    mat = make_trading_screen("wing_screen", strength)
+    w, h, bezel = 0.58, 0.34, 0.015
+    for sx in (-1, 1):
+        piv = bpy.data.objects.new("wing_pivot", None)
+        piv.location = (sx * 0.262, 0.236, 1.17)
+        piv.rotation_euler = (0, 0, sx * math.radians(-32))
+        coll("Variant").objects.link(piv)
+        monitor("wing_screen", (sx * (w / 2 + bezel), 0, 0), w, h, mat, collection="Variant", parent=piv)
+        add_obj("wing_arm", box_mesh(0.05, 0.12, 0.04, bevel=0.005), (sx * 0.02, 0.09, 0), M["dark_metal"],
+                collection="Variant", parent=piv)
+
+
+def build_hanging_ticker():
+    C = "Variant"
+    L, H, y, z = 6.0, 0.2, 3.4, 2.7
+    box("ticker_housing", (L + 0.06, 0.08, H + 0.06), (0, y + 0.045, z), M["housing"], bevel=0.01, collection=C)
+    plane_xz("ticker", L, H, (0, y, z), make_ticker(), collection=C)
+    for x in (-2.2, 2.2):
+        box("ticker_rod", (0.012, 0.012, CEIL - z - H / 2), (x, y + 0.045, (CEIL + z + H / 2) / 2), M["dark_metal"], collection=C)
+
+
+def variant_tier2(chair_src):
+    """Mid-floor: open bench seating with more desks behind, wing monitors, a ticker over the floor."""
+    remove_objects({"hero_partition_back", "hero_partition_cap", "sticky"})
+    C = "Variant"
+    # low glass-topped divider instead of the tall fabric partition (hidden behind the bottom monitor)
+    box("hero_divider", (1.8, 0.04, 0.22), (0, 0.47, DESK_H + 0.11), M["fabric_hero"], bevel=0.006, collection=C)
+    box("hero_divider_cap", (1.82, 0.05, 0.02), (0, 0.47, DESK_H + 0.23), M["trim"], bevel=0.006, collection=C)
+    build_wing_monitors()
+    build_bg_desks(chair_src, open_floor=True)
+    build_hanging_ticker()
+    set_mat("hero_desk_top", mat_basic("walnut_top", "#5a3d2b", 0.35, coat=0.35))
+    set_mat("hero_desk_edge", mat_basic("walnut_edge", "#3e2a1e", 0.4))
+
+
+WIN3_Y = 1.25
+
+
+def build_skyline_near():
+    """A few tall towers close enough to rise above the hero monitors in CAM_main."""
+    me = box_mesh(1, 1, 1)
+    for (x0, x1, y, d, top) in [(-34.0, -13.0, 78.0, 20.0, 52.0), (15.0, 31.0, 96.0, 18.0, 36.0),
+                                (-4.0, 9.0, 210.0, 16.0, 74.0), (-60.0, -40.0, 150.0, 22.0, 64.0),
+                                (36.0, 54.0, 170.0, 20.0, 50.0)]:
+        base = -220.0
+        ob = bpy.data.objects.new("tower_near", me)
+        ob.location = ((x0 + x1) / 2, y, (top + base) / 2)
+        ob.scale = (x1 - x0, d, top - base)
+        camera_only(ob)
+        coll("City").objects.link(ob)
+
+
+def variant_tier3():
+    """Window seat: floor-to-ceiling glass right behind the desk, dusk skyline beyond."""
+    remove_objects({"hero_partition_back", "hero_partition_cap", "sticky", "mullion", "transom", "soffit"})
+    C = "Variant"
+    for x in (-0.66, 0.66):
+        box("mullion3", (0.06, 0.12, CEIL), (x, WIN3_Y, CEIL / 2), M["mullion"], collection=C)
+    box("transom3", (2 * ROOM_X, 0.1, 0.05), (0, WIN3_Y, 0.42), M["mullion"], collection=C)
+    build_wing_monitors(0.32)
+    set_mat("hero_desk_top", mat_basic("stone_top", "#262a33", 0.28, coat=0.5))
+    set_mat("hero_desk_edge", mat_basic("stone_edge", "#1b1e25", 0.35))
+    # slightly warm-tinted glass (no glossy: it mirrored the ceiling lights as bright bands)
+    g = bpy.data.materials.new("window_glass3")
+    nb = NB(g)
+    t = nb.node("ShaderNodeBsdfTransparent")
+    t.inputs[0].default_value = hex_lin("#f4eeec")
+    nb.output(t.outputs[0])
+    set_mat("window_glass", g)
+    build_skyline_near()
+    # low warm sun from beyond the glass
+    ld = bpy.data.lights.new("dusk_sun", "SUN")
+    ld.energy = 2.2
+    ld.color = hex_lin("#ffb98a")[:3]
+    ld.angle = math.radians(2.0)
+    lo = bpy.data.objects.new("dusk_sun", ld)
+    lo.rotation_euler = (math.radians(-80), 0, math.radians(24))
+    coll("Lights").objects.link(lo)
+    for ob in coll("Lights").objects:
+        if ob.name.startswith("window_fill"):
+            ob.data.color = hex_lin("#f0c7b0")[:3]
+            ob.data.energy = 260.0
+
+
+DUSK_SKY = [(0.0, "#f3a46c"), (0.6, "#1d2a5c"), (0.07, "#eaa38e"), (0.17, "#b98fae"), (0.32, "#6a63a3")]
+
+
+def variant_fired():
+    """Tier1 desk, cleared out: belongings packed in a cardboard box, colder and dimmer light."""
+    remove_objects({"keyboard", "keys", "mousepad", "mouse", "mug", "mug_band", "coffee", "mug_handle",
+                    "paper_a", "paper_b", "paper_c", "binder", "binder2", "sticky_desk", "phone", "pot", "leaf"})
+    # leave a single sticky on the partition
+    for ob in list(bpy.data.objects):
+        if ob.name.split(".")[0] == "sticky" and not (abs(ob.location.x - 0.36) < 0.01):
+            bpy.data.objects.remove(ob, do_unlink=True)
+    C = "Fired"
+    kraft = make_kraft()
+    W, D, H, t = 0.42, 0.31, 0.135, 0.006
+    root = bpy.data.objects.new("box_root", None)
+    root.location = (0.0, -0.265, DESK_H)
+    root.rotation_euler = (0, 0, math.radians(5))
+    coll(C).objects.link(root)
+
+    def part(name, size, loc, mat, rot=(0, 0, 0), bevel=0.0, parent=root):
+        return add_obj(name, box_mesh(*size, bevel=bevel), loc, mat, rot, collection=C, parent=parent)
+
+    part("box_floor", (W, D, t), (0, 0, t / 2), kraft)
+    for sy in (-1, 1):
+        part("box_wall", (W, t, H), (0, sy * (D - t) / 2, H / 2), kraft)
+    for sx in (-1, 1):
+        part("box_wall", (t, D - 2 * t, H), (sx * (W - t) / 2, 0, H / 2), kraft)
+    # flaps folded outward and drooping (kept low so nothing rises toward the screens)
+    for sy, fl, ang in ((-1, 0.15, 128), (1, 0.13, 140)):
+        hinge = bpy.data.objects.new("flap_hinge", None)
+        hinge.parent = root
+        hinge.location = (0, sy * D / 2, H)
+        hinge.rotation_euler = (math.radians(-sy * ang), 0, 0)
+        coll(C).objects.link(hinge)
+        part("box_flap", (W - 0.01, t * 0.8, fl), (0, 0, fl / 2), kraft, parent=hinge)
+    for sx, ang in ((-1, 118), (1, 124)):
+        hinge = bpy.data.objects.new("flap_hinge", None)
+        hinge.parent = root
+        hinge.location = (sx * W / 2, 0, H)
+        hinge.rotation_euler = (0, math.radians(sx * ang), 0)
+        coll(C).objects.link(hinge)
+        part("box_flap", (t * 0.8, D - 0.02, 0.11), (0, 0, 0.055), kraft, parent=hinge)
+    part("box_tape", (0.05, D + 0.002, 0.001), (0, 0, t + 0.0005), mat_basic("tape", "#c9a874", 0.3, coat=0.5))
+
+    # contents (box space: +y is the back of the box, z = 0 is the desk)
+    # folders and a binder standing along the back wall
+    for k, (mname, th, lean, x) in enumerate([("binder", 0.03, -8, -0.13), ("binder2", 0.022, -12, -0.09),
+                                               ("paper2", 0.012, -16, 0.02), ("binder", 0.02, -18, 0.11)]):
+        part("box_folder", (0.17 if mname.startswith("paper") else 0.07, th, 0.13),
+             (x, D / 2 - 0.03 - k * 0.006, 0.07), M[mname], rot=(math.radians(lean), 0, math.radians(90) if not mname.startswith("paper") else 0),
+             bevel=0.002)
+    # papers fanned on a stack, with the mug on top
+    part("box_stack", (0.2, 0.15, 0.05), (0.08, -0.02, t + 0.025), M["paper2"], bevel=0.003)
+    part("box_sheet", (0.21, 0.16, 0.002), (0.07, -0.03, t + 0.051), M["paper"], rot=(0, 0, math.radians(9)))
+    mx, my, mz = 0.12, -0.05, t + 0.052
+    add_obj("box_mug", cyl_mesh(0.04, 0.095, 28), (mx, my, mz + 0.0475), M["mug"], collection=C, parent=root)
+    add_obj("box_mug_band", cyl_mesh(0.0415, 0.017, 28), (mx, my, mz + 0.066), M["mug_band"], collection=C, parent=root)
+    add_obj("box_mug_handle", cyl_mesh(0.009, 0.05, 10), (mx + 0.046, my, mz + 0.05), M["mug"], collection=C, parent=root)
+    # photo frame leaning in the middle
+    fr = bpy.data.objects.new("photo_root", None)
+    fr.parent = root
+    part("box_book", (0.17, 0.12, 0.03), (-0.02, 0.06, t + 0.015), M["binder2"], bevel=0.003)
+    fr.location = (-0.02, 0.05, t + 0.03)
+    fr.rotation_euler = (math.radians(24), 0, math.radians(-6))
+    coll(C).objects.link(fr)
+    fw, fh = 0.15, 0.115
+    part("photo_frame", (fw, 0.012, fh), (0, 0.006, fh / 2), mat_basic("photo_frame", "#2a2420", 0.4), bevel=0.003, parent=fr)
+    ph = plane_xz("photo", fw - 0.024, fh - 0.024, (0, -0.0005, fh / 2), make_photo(), collection=C)
+    ph.parent = fr
+    # small plant in the front left corner
+    px, py = -0.135, -0.075
+    add_obj("box_pot", cyl_mesh(0.045, 0.085, 20, r2=0.052), (px, py, t + 0.0425), M["plant_pot"], collection=C, parent=root)
+    bm = bmesh.new()
+    bmesh.ops.create_uvsphere(bm, u_segments=12, v_segments=8, radius=1.0)
+    leaf_me = bpy.data.meshes.new("leaf_blade")
+    bm.to_mesh(leaf_me)
+    bm.free()
+    for poly in leaf_me.polygons:
+        poly.use_smooth = True
+    rng = random.Random(9)
+    for k in range(18):
+        a = k * 2 * math.pi / 18 + rng.uniform(-0.2, 0.2)
+        tilt = rng.uniform(0.45, 1.15)
+        Ll = rng.uniform(0.07, 0.1)
+        off = 0.012 + math.sin(tilt) * Ll / 2
+        lf = add_obj("box_leaf", leaf_me, (px + math.cos(a) * off, py + math.sin(a) * off, t + 0.082 + math.cos(tilt) * Ll / 2),
+                     M["leaf"], rot=(tilt, 0, a + math.pi / 2), collection=C, parent=root)
+        lf.scale = (0.019, 0.004, Ll / 2)
+
+    # colder, dimmer light
+    for ob in coll("Lights").objects:
+        n = ob.name.split(".")[0]
+        if n == "panel_light":
+            ob.data.energy *= 0.72
+            ob.data.color = hex_lin("#d8e4ff")[:3]
+        elif n == "hero_key":
+            ob.data.energy = 9.0
+            ob.data.color = hex_lin("#d6e2ff")[:3]
+        elif n == "lamp_light":
+            ob.data.energy = 0.0
+        elif n == "window_fill":
+            ob.data.energy *= 0.7
+            ob.data.color = hex_lin("#b3c4e4")[:3]
+    MATS.pop("lamp_glow", None)
+    for ob in bpy.data.objects:
+        if ob.name.split(".")[0] == "lamp_bulb":
+            ob.material_slots[0].material = mat_basic("lamp_off", "#d8d2c4", 0.3)
+
+
+def check_clear(cam_ob, rects, objs, below=None):
+    """Project every vertex in front of the hero screen plane; report any that land inside a hero
+    screen rectangle. With `below`, also require every vertex to sit lower in frame than that %."""
+    bad, top_most, top_ob = 0, 100.0, ""
+    for ob in objs:
+        if ob.type != "MESH":
+            continue
+        mw = ob.matrix_world
+        for vtx in ob.data.vertices:
+            w = mw @ vtx.co
+            p = world_to_camera_view(scene, cam_ob, w)
+            fx, fy = p.x * 100, (1 - p.y) * 100
+            if 0 <= fx <= 100 and fy < top_most:
+                top_most, top_ob = fy, ob.name
+            if w.y >= SCREEN_TOP_C[1] and below is None:
+                continue
+            for (l, r, t_, b) in rects.values():
+                if l < fx < r and t_ < fy < b:
+                    bad += 1
+                    break
+    msg = f"clearance {cam_ob.name}: {bad} vertices of {len(objs)} variant objects inside the hero screen rectangles"
+    if below is not None:
+        msg += f"; highest point at {top_most:.2f}% on {top_ob} (must be below {below}%)"
+        bad += top_most <= below
+    print(msg + ("  OK" if bad == 0 else "  FAIL"))
+    return bad == 0
+
+
+# ---------------------------------------------------------------------------
 # Cameras
 # ---------------------------------------------------------------------------
 def build_cameras():
@@ -990,7 +1314,7 @@ def measure(cam_ob, screens):
     return res
 
 
-def occlusion(cam_ob, screen, n=7):
+def occlusion(cam_ob, screen, n=15):
     """Fraction of sample points on the screen that are hidden from the camera."""
     dg = bpy.context.evaluated_depsgraph_get()
     origin = cam_ob.matrix_world.translation
@@ -1033,21 +1357,38 @@ def verify(cams, screens):
 def main():
     t0 = time.time()
     build_materials()
-    make_world()
-    build_room()
+    if VARIANT == "tier3":
+        make_world(DUSK_SKY, "#8c7fa6", 0.35)
+        M["tower"] = make_tower("tower_dusk", lit_base=0.6, haze_col="#c99aa6", tones=("#1b2340", "#2f3a5e"),
+                                glass_cols=("#1a2340", "#56507e"), haze_start=40.0, haze_len=300.0)
+        build_room(Y1=WIN3_Y, pillar=False)
+    else:
+        make_world()
+        build_room(pillar=VARIANT != "tier2")
     chair_src = build_chair_source()
     top, bot = build_hero_desk()
     hero_chair = chair_instance("hero_chair", (0.16, -0.78, 0), math.radians(-14), chair_src, collection="Hero")
-    build_bg_desks(chair_src)
+    if VARIANT == "tier2":
+        variant_tier2(chair_src)
+    elif VARIANT == "tier3":
+        variant_tier3()
+    else:
+        build_bg_desks(chair_src)
+        if VARIANT == "fired":
+            variant_fired()
     build_city()
     cam_main, cam_wide = build_cameras()
     setup_render()
-    print(f"Scene built in {time.time() - t0:.1f}s; objects: {len(bpy.data.objects)}")
+    print(f"Scene built in {time.time() - t0:.1f}s; variant {VARIANT}; objects: {len(bpy.data.objects)}")
 
     bpy.context.view_layer.update()
     ok = verify([cam_main, cam_wide], [top, bot])
+    if VARIANT != "tier1":
+        rects = measure(cam_main, [top, bot])
+        extra = list(COLLS["Fired" if VARIANT == "fired" else "Variant"].all_objects)
+        ok &= check_clear(cam_main, rects, extra, below=78.4 if VARIANT == "fired" else None)
 
-    jobs = {"main": (cam_main, "desk.png", False), "wide": (cam_wide, "wide.png", True)}
+    jobs = {"main": (cam_main, f"desk{SUFFIX}.png", False), "wide": (cam_wide, f"wide{SUFFIX}.png", True)}
     os.makedirs(OUT_DIR, exist_ok=True)
     for key in CAMS:
         cam_ob, fname, chair_on = jobs[key]
@@ -1059,6 +1400,7 @@ def main():
         for s in (top, bot):
             frac, blk = occlusion(cam_ob, s)
             print(f"occlusion {cam_ob.name} {s.name}: {frac * 100:.0f}% hidden {blk}")
+            ok &= frac == 0
         scene.render.filepath = os.path.join(OUT_DIR, fname)
         t = time.time()
         bpy.ops.render.render(write_still=True)
@@ -1066,7 +1408,7 @@ def main():
               f"({scene.render.resolution_x * scene.render.resolution_percentage // 100}x"
               f"{scene.render.resolution_y * scene.render.resolution_percentage // 100}, {SAMPLES} samples)")
     if not ok:
-        print("WARNING: screen rectangles out of tolerance")
+        print("WARNING: a screen check failed (rectangles, occlusion or variant clearance)")
 
 
 main()

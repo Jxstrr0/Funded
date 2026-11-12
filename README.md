@@ -15,7 +15,8 @@ Play: https://funded.longlight.games (GitHub Pages, `main` branch root)
 - **Stage 4: Reputation, perks, guided first day.** Done.
 - **Stage 5: futures tier.** Done. Pass Tier 1 to move up to the $50k futures desk.
 - **Stage 6: options tier.** Done. Pass Tier 2 to move up to $100k options: CALL / PUT / CLOSE on one strike a day, with time decay and an earnings volatility crush.
-- **Sound:** ElevenLabs effects, ambience and menu music. Toggle on the title screen or with M.
+- **Sound:** ElevenLabs effects, ambience and music. Toggle on the title screen or with M.
+- **Stage 7: polish.** Done. Card transitions, screen flashes, floating P&L, haptics, and a desk that changes as your career climbs (and a cardboard box when you're fired).
 
 ## Tuning
 
@@ -48,11 +49,12 @@ js/options.js     option pricing: Black-Scholes, IV pump and crush (pure)
 js/chart.js       canvas candlesticks
 js/ui.js          monitor overlays, meters, cards
 js/audio.js       sound: ElevenLabs files in assets/audio/, synth fallback
+js/fx.js          juice: flashes, P&L pops, haptics, backdrop crossfades
 js/save.js        localStorage save and resume
 js/meta.js        Reputation, perk shop, tutorial flag
 js/tutorial.js    guided training day
 js/main.js        boot, intro, game loop and state machine
-assets/           desk.jpg (gameplay), wide.jpg (intro), audio/
+assets/           desk.jpg, desk-tier2.jpg, desk-tier3.jpg, desk-fired.jpg (gameplay), wide.jpg (intro), audio/
 art/              build_scene.py: the Blender scene that renders the backdrops
 tests/            node:test suites for engine and rules
 ```
