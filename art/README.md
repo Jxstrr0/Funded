@@ -19,7 +19,7 @@ blender -b --factory-startup -P art/build_scene.py -- [--out DIR] [--samples N] 
 
   Convert them like the others: `ffmpeg -y -i art/out/desk-tier2.png -q:v 3 assets/desk-tier2.jpg` (and the same for `tier3` and `fired`).
 
-Needs Blender 4.2 LTS. It renders with Cycles on the CPU (EEVEE needs a GPU). A full render at 192 samples takes about TIMING on 4 cores.
+Needs Blender 4.2 LTS. It renders with Cycles on the CPU (EEVEE needs a GPU). A full render at 192 samples takes about 9 minutes for CAM_main and 12 for CAM_wide on 4 cores (tier1 both: about 22 minutes; tier2 8, tier3 3, fired 9).
 
 The script prints the measured screen rectangles for both cameras and checks them against the contract below, then ray-casts each hero screen to check that nothing hides it. For a variant it also projects every added object and checks that nothing in front of the screens lands inside their rectangles; for `fired`, every part of the box must sit below the bottom screen (lower than 78.4% of the frame).
 
