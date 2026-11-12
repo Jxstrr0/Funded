@@ -7,21 +7,20 @@ Read this at the start of every session. The full design spec is `docs/HANDOFF.m
 - **Merging:** open PRs and **squash-merge them yourself** (or auto-merge) when the work is done and checks pass. No need to ask first.
 - **Ask when unsure.** If a design or product decision isn't settled in `docs/HANDOFF.md` or here, ask the owner rather than guessing. Pick obvious defaults yourself and mention them.
 - **Assets:** only these sources may be used:
-  - **Blender**: the hosted project linked in `docs/HANDOFF.md` §11, or new Blender work.
-  - **ElevenLabs** for sound and voice. **Always quote the cost and get approval before generating.**
+  - **Blender, run locally and headless** in the session container (install it if missing: Blender 4.2 LTS from download.blender.org, Cycles on the CPU). Scenes are Python build scripts in `art/`, and renders are pulled from there.
+  - **ElevenLabs**, mostly for audio. **Always quote the cost and get approval before generating.**
   - **CC0** assets.
   - **CC BY** assets, **with attribution** added to `CREDITS.md` (title, author, source URL, licence).
-  - Nothing else: no unlicensed or "free for personal use" assets.
+  - **No Higgsfield**, of any kind. Nothing else either: no unlicensed or "free for personal use" assets.
 - **Helpers:** up to **2** helper agents at a time, each either Opus 5.5 at medium effort or Sonnet 5.5 at high effort, at Claude's discretion.
 - The owner works mostly **from a phone** through the GitHub web UI. Keep files simple and easy to edit there, and keep tuning numbers in `js/config.js` and screen positions in the CSS variables at the top of `css/style.css`.
 
 ## Art
 
-- `assets/desk.png` and `assets/wide.png` are **Blender blockouts to build on**, not final art. They come from the hosted Blender project (Higgsfield 3D Jutsu, link in `docs/HANDOFF.md` §11): cameras `CAM_main` and `CAM_wide`, screens `HERO_screen_top` and `HERO_screen_bottom`.
-- Improve the scene in that project and re-render at the same 720×1280 framing, so the percentage-based overlays keep lining up. If a camera moves, re-measure the screen rectangles and the intro zoom.
-- Outstanding art: listed in `docs/HANDOFF.md` §11.
-- Measured screen rectangles (% of frame): CAM_main top 11/89/21.6/47.6, bottom 11/89/52.4/78.4 (left/right/top/bottom). CAM_wide top 33.0/59.4/46.2/54.9, bottom 33.2/59.3/56.4/65.0. Intro zoom: scale 3, origin 44.3% 58.4%.
-- Higgsfield costs: Blender edits and renders through the python tools appear free. `generate_angles` (Seedream) and `generate_video` (Seedance) spend credits, so quote first. The balance was 0 credits on 2026-11-12.
+- `assets/desk.png` and `assets/wide.png` started as Blender blockouts. The scene is being rebuilt as a local, reproducible script, `art/build_scene.py`. See `art/README.md`.
+- Keep the camera and screen contract fixed so the percentage-based overlays line up: 9:16 renders, `CAM_main` 35mm at (0, −1.02, 1.17) looking +Y, `CAM_wide` 30mm at (0, −2.85, 1.70) with rotation (1.466, 0, −0.025), and screens of 0.54×0.32 m centred at (0, 0.18, 1.36) and (0, 0.18, 0.98).
+- Measured screen rectangles (% of frame, left/right/top/bottom): CAM_main top 11/89/21.6/47.6, bottom 11/89/52.4/78.4. CAM_wide top 33.0/59.4/46.2/54.9, bottom 33.2/59.3/56.4/65.0. Intro zoom: scale 3, origin 44.3% 58.4%.
+- Outstanding art: listed in `docs/HANDOFF.md` §11 (ignore its Higgsfield link).
 
 ## Locked technical rules (from the handoff)
 
