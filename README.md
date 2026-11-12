@@ -39,7 +39,7 @@ They are percentages of the 9:16 frame, so sharper renders at the same framing n
 - Add `?speed=10` to the URL to run the market clock 10x faster (up to 60x).
 - Desktop keys: **B** buy, **S** sell, **F** flatten, **1–3** size, **P** or **Space** pause.
 - Logic tests (no install needed, Node 22+): `node --test tests/*.test.js`
-- Balance check: `node tools/balance.mjs` plays thousands of evals with each edge and mandate and prints pass and firing rates (about a minute).
+- Balance check: `node tools/balance.mjs` plays thousands of evals with each edge and mandate and prints pass and firing rates (about a minute). `node tools/levers.mjs` tries one tuning change at a time (target, news, eval days) for a careful and an aggressive player.
 
 ## Files
 
@@ -62,6 +62,8 @@ js/main.js        boot, intro, game loop and state machine
 assets/           desk.jpg, desk-tier2.jpg, desk-tier3.jpg (+ -am / -pm light), desk-fired.jpg (gameplay), wide.jpg (intro), audio/
 art/              build_scene.py: the Blender scene that renders the backdrops
 tools/balance.mjs bot that plays thousands of evals to compare edges and mandates
+tools/levers.mjs  what-if: one tuning change at a time, careful vs aggressive
+tools/sim.mjs     the shared bot
 tests/            node:test suites for engine and rules
 ```
 

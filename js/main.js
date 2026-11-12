@@ -408,6 +408,7 @@ function mandateCard(picked) {
     actions['m_' + m.id] = () => {
       const next = new Set(picked);
       next.has(m.id) ? next.delete(m.id) : next.add(m.id);
+      sfx.stamp(next.has(m.id));
       mandateCard(next);
     };
   }
@@ -424,12 +425,14 @@ function mandateCard(picked) {
 // ---------- edges ----------
 
 /** Show the pending edge pick, if any, then carry on with `next`. */
-function afterDraft(next) {
+function afterDraft(next, { rerolled = false } = {}) {
   const offer = draftOffer(S.run);
   if (!S.run.draft || !offer.length) {
     if (S.run.draft) { S.run = { ...S.run, draft: null }; persist(true); }
     return next();
   }
+  rerolled ? sfx.reroll() : sfx.deal();
+  if (offer.some((id) => edgeById(id).weight <= 1)) setTimeout(sfx.rare, 380);
   const left = rerollsAllowed(S.run.perks) - S.run.draft.rerolls;
   const cards = offer.map((id) => {
     const e = edgeById(id);
@@ -437,13 +440,13 @@ function afterDraft(next) {
       <button class="buy" data-action="e_${id}">Take</button></div>`;
   }).join('');
   const actions = {
-    reroll: () => { S.run = rerollDraft(S.run); persist(true); sfx.flat(); afterDraft(next); },
+    reroll: () => { S.run = rerollDraft(S.run); persist(true); afterDraft(next, { rerolled: true }); },
   };
   for (const id of offer) {
     actions['e_' + id] = () => {
       S.run = takeEdge(S.run, id);
       persist(true);
-      sfx.rep();
+      sfx.pick();
       next();
     };
   }
@@ -706,7 +709,7 @@ function shop(back) {
       <button class="buy" data-action="buy_${p.id}" ${owned || !canBuy(meta, p.id) ? 'disabled' : ''}>${label}</button></div>`;
   }).join('');
   const actions = { back };
-  for (const p of PERKS) actions['buy_' + p.id] = () => { meta = buyPerk(meta, p.id); saveMeta(meta); sfx.pass(); shop(back); };
+  for (const p of PERKS) actions['buy_' + p.id] = () => { meta = buyPerk(meta, p.id); saveMeta(meta); sfx.purchase(); shop(back); };
   ui.showCard(`
     <div class="eyebrow">Perk shop</div>
     <h2>You have <span class="rep">${meta.rep} Rep</span></h2>
