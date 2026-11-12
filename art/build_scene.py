@@ -39,7 +39,7 @@ def _arg(name, default):
 
 PREVIEW = "--preview" in argv
 OUT_DIR = os.path.abspath(_arg("--out", os.path.join(HERE, "out")))
-SAMPLES = int(_arg("--samples", 16 if PREVIEW else 96))
+SAMPLES = int(_arg("--samples", 16 if PREVIEW else 192))
 VARIANT = _arg("--variant", "tier1")
 VARIANTS = ("tier1", "tier2", "tier3", "fired")
 if VARIANT not in VARIANTS:
@@ -252,6 +252,7 @@ def box_mesh(sx, sy, sz, bevel=0.0, seg=2):
         b = min(bevel, 0.49 * min(sx, sy, sz))
         bmesh.ops.bevel(bm, geom=list(bm.edges), offset=b, segments=seg,
                         affect="EDGES", profile=0.5)
+        smooth_bm(bm)
     me = bpy.data.meshes.new("box")
     bm.to_mesh(me)
     bm.free()
@@ -321,6 +322,176 @@ def camera_only(ob):
     ob.visible_transmission = False
     ob.visible_volume_scatter = False
     ob.visible_shadow = False
+
+
+def smooth_bm(bm, angle=40.0):
+    """Smooth shading with edges sharper than `angle` kept hard, so bevels catch soft highlights."""
+    lim = math.radians(angle)
+    for f in bm.faces:
+        f.smooth = True
+    for e in bm.edges:
+        e.smooth = len(e.link_faces) == 2 and e.calc_face_angle(0.0) < lim
+
+
+def bm_mesh(bm, name, smooth=None):
+    if smooth is not None:
+        smooth_bm(bm, smooth)
+    me = bpy.data.meshes.new(name)
+    bm.to_mesh(me)
+    bm.free()
+    return me
+
+
+def shell_mesh(sx, sy, sz, back_scale=(0.7, 0.65), bevel=0.0, seg=3):
+    """Box along Y whose back face (+Y) is scaled down: the tapered back of a monitor."""
+    key = ("shell", round(sx, 4), round(sy, 4), round(sz, 4), back_scale, round(bevel, 4))
+    if key in MESH_CACHE:
+        return MESH_CACHE[key]
+    bm = bmesh.new()
+    bmesh.ops.create_cube(bm, size=1.0)
+    for v in bm.verts:
+        if v.co.y > 0:
+            v.co.x *= back_scale[0]
+            v.co.z *= back_scale[1]
+        v.co.x *= sx
+        v.co.y *= sy
+        v.co.z *= sz
+    if bevel > 0:
+        bmesh.ops.bevel(bm, geom=list(bm.edges), offset=min(bevel, 0.45 * sy), segments=seg, affect="EDGES", profile=0.5)
+    MESH_CACHE[key] = bm_mesh(bm, "shell", 40.0)
+    return MESH_CACHE[key]
+
+
+def wedge_mesh(sx, sy, hf, hb, bevel=0.0, seg=3):
+    """Box standing on z = 0 whose height rises from hf at the front (-Y) to hb at the back."""
+    bm = bmesh.new()
+    bmesh.ops.create_cube(bm, size=1.0)
+    for v in bm.verts:
+        t = v.co.y + 0.5
+        v.co.z = (v.co.z + 0.5) * (hf + (hb - hf) * t)
+        v.co.x *= sx
+        v.co.y *= sy
+    if bevel > 0:
+        bmesh.ops.bevel(bm, geom=list(bm.edges), offset=min(bevel, 0.45 * hf), segments=seg, affect="EDGES", profile=0.5)
+    return bm_mesh(bm, "wedge", 40.0)
+
+
+def rounded_slab_mesh(sx, sy, sz, r, seg=6):
+    """Rounded-corner rectangle extruded from z = 0 to sz (desk mat, phone)."""
+    bm = bmesh.new()
+    pts = []
+    for cx, cy, a0 in ((sx / 2 - r, sy / 2 - r, 0), (-sx / 2 + r, sy / 2 - r, 90),
+                       (-sx / 2 + r, -sy / 2 + r, 180), (sx / 2 - r, -sy / 2 + r, 270)):
+        for i in range(seg + 1):
+            a = math.radians(a0 + 90 * i / seg)
+            pts.append(bm.verts.new((cx + r * math.cos(a), cy + r * math.sin(a), 0)))
+    f = bm.faces.new(pts)
+    ext = bmesh.ops.extrude_face_region(bm, geom=[f])
+    for v in ext["geom"]:
+        if isinstance(v, bmesh.types.BMVert):
+            v.co.z = sz
+    bmesh.ops.recalc_face_normals(bm, faces=list(bm.faces))
+    return bm_mesh(bm, "slab", 50.0)
+
+
+KEY_U = 0.019          # one keyboard unit (key pitch)
+
+
+def tkl_layout():
+    """Tenkeyless layout as (x in units from the left, row from the back, width in units, kind).
+    kind: a = alpha, m = modifier, x = lilac accent (Esc, Enter)."""
+    keys = []
+
+    def run(row, x, spec):
+        for w, kind in spec:
+            if kind != "-":
+                keys.append((x, row, w, kind))
+            x += w
+
+    a1, m1 = (1, "a"), (1, "m")
+    run(0, 0, [(1, "x"), (1, "-")] + [a1] * 4 + [(0.5, "-")] + [m1] * 4 + [(0.5, "-")] + [a1] * 4)
+    run(1, 0, [a1] * 13 + [(2, "m")])
+    run(2, 0, [(1.5, "m")] + [a1] * 12 + [(1.5, "a")])
+    run(3, 0, [(1.75, "m")] + [a1] * 11 + [(2.25, "x")])
+    run(4, 0, [(2.25, "m")] + [a1] * 10 + [(2.75, "m")])
+    run(5, 0, [(1.25, "m")] * 3 + [(6.25, "a")] + [(1.25, "m")] * 4)
+    for row in (0, 1, 2, 5):                                # navigation cluster and arrows
+        run(row, 15.25, [m1] * 3)
+    run(4, 16.25, [m1])
+    return keys
+
+
+def keycaps_mesh():
+    """All keycaps as one mesh: tapered, bevelled caps, slightly taller toward the back rows
+    (sculpted profile). Material index 0 alpha, 1 modifier, 2 accent."""
+    bm = bmesh.new()
+    U, gap, inset = KEY_U, 0.0019, 0.0017
+    width_u, depth_u = 18.25, 6.5
+    kinds = {"a": 0, "m": 1, "x": 2}
+    for (x, row, w, kind) in tkl_layout():
+        cx = (x + w / 2 - width_u / 2) * U
+        cy = (depth_u / 2 - (row + (0.5 if row > 0 else 0)) - 0.5) * U
+        hw, hd = (w * U - gap) / 2, (U - gap) / 2
+        kh = 0.0078 + 0.0006 * (5 - row) / 5
+        res = bmesh.ops.create_cube(bm, size=1.0)
+        for v in res["verts"]:
+            top = v.co.z > 0
+            sx_ = 1 if v.co.x > 0 else -1
+            sy_ = 1 if v.co.y > 0 else -1
+            v.co.x = cx + sx_ * (hw - (inset if top else 0))
+            v.co.y = cy + sy_ * (hd - (inset if top else 0)) + (0.0006 if top else 0)
+            v.co.z = kh if top else 0.0
+        for f in {f for v in res["verts"] for f in v.link_faces}:
+            f.material_index = kinds[kind]
+    bmesh.ops.bevel(bm, geom=list(bm.edges), offset=0.0009, segments=2, affect="EDGES", profile=0.5)
+    return bm_mesh(bm, "keycaps", 45.0)
+
+
+MOUSE_L, MOUSE_W, MOUSE_HT = 0.116, 0.062, 0.034
+
+
+def MOUSE_H(yn):
+    """Height of the mouse shell at yn (-1 back .. 1 front), matching mouse_mesh()."""
+    return (math.sqrt(max(0.0, 1 - yn * yn)) + 0.25) / 1.25 * MOUSE_HT * (0.9 - 0.2 * yn)
+
+
+def mouse_mesh():
+    """Ergonomic mouse: a flattened ellipsoid with its hump toward the palm and a narrower nose."""
+    bm = bmesh.new()
+    bmesh.ops.create_uvsphere(bm, u_segments=32, v_segments=18, radius=1.0)
+    for v in bm.verts:
+        x, yn, z = v.co
+        z = max(z, -0.25) + 0.25
+        v.co.x = x * MOUSE_W / 2 * (1 - 0.1 * yn)
+        v.co.y = yn * MOUSE_L / 2
+        v.co.z = z / 1.25 * MOUSE_HT * (0.9 - 0.2 * yn)
+    bmesh.ops.remove_doubles(bm, verts=list(bm.verts), dist=1e-5)
+    return bm_mesh(bm, "mouse", 80.0)
+
+
+def leaf_mesh():
+    """Unit ellipsoid used for leaves (scaled per instance)."""
+    if "leaf" in MESH_CACHE:
+        return MESH_CACHE["leaf"]
+    bm = bmesh.new()
+    bmesh.ops.create_uvsphere(bm, u_segments=12, v_segments=8, radius=1.0)
+    MESH_CACHE["leaf"] = bm_mesh(bm, "leaf_blade", 180.0)
+    return MESH_CACHE["leaf"]
+
+
+def area_light(name, size, loc, target, energy, color):
+    """Rectangular area light aimed at `target`, hidden from camera rays."""
+    ld = bpy.data.lights.new(name, "AREA")
+    ld.shape = "RECTANGLE"
+    ld.size, ld.size_y = size
+    ld.energy = energy
+    ld.color = hex_lin(color)[:3]
+    lo = bpy.data.objects.new(name, ld)
+    lo.location = loc
+    lo.rotation_euler = (Vector(target) - Vector(loc)).to_track_quat("-Z", "Y").to_euler()
+    lo.visible_camera = False
+    coll("Lights").objects.link(lo)
+    return lo
 
 
 # ---------------------------------------------------------------------------
@@ -480,7 +651,7 @@ def make_tower(name="tower", lit_base=0.80, haze_col="#b9c8dc", tones=("#24354f"
 DAY_SKY = [(0.0, "#b4c3d8"), (0.35, "#5f7fae"), (0.04, "#d9d4d6"), (0.12, "#a9bcd7")]
 
 
-def make_world(sky=DAY_SKY, amb_col="#6d84a8", amb_str=0.35):
+def make_world(sky=DAY_SKY, amb_col="#6d84a8", amb_str=0.26):
     w = bpy.data.worlds.new("World")
     scene.world = w
     w.use_nodes = True
@@ -521,26 +692,150 @@ def make_glass():
     return m
 
 
-def make_partition_fabric(name, color):
+def make_partition_fabric(name, color, weave=True):
+    """Woven panel fabric: a basket weave in bump and tone (hero panels) over a heathered colour."""
     m = bpy.data.materials.new(name)
     nb = NB(m)
     tc = nb.node("ShaderNodeTexCoord")
+    o = nb.sep(tc.outputs["Object"])
     n = nb.noise(vec=tc.outputs["Object"], dims="3D", scale=120.0, detail=2.0)
+    blot = nb.noise(vec=tc.outputs["Object"], dims="3D", scale=6.0, detail=2.0)
     col = nb.mix(nb.m("MULTIPLY", n[0], 0.35), color, "#5d78a0")
-    nb.output(nb.principled(col, 0.95, spec=0.15))
+    col = nb.mix(nb.m("MULTIPLY", blot[0], 0.25), col, "#33486b")
+    if not weave:
+        nb.output(nb.principled(col, 0.95, spec=0.15))
+        return m
+    p = 0.0032                                              # thread pitch (m)
+    h = nb.m("DIVIDE", nb.m("ADD", o[0], o[1]), p)          # panels are axis aligned
+    v = nb.m("DIVIDE", o[2], p)
+    over = nb.m("MODULO", nb.m("ADD", nb.m("FLOOR", h), nb.m("FLOOR", v)), 2.0)
+    warp = nb.m("SINE", nb.m("MULTIPLY", nb.m("FRACT", h), math.pi))
+    weft = nb.m("SINE", nb.m("MULTIPLY", nb.m("FRACT", v), math.pi))
+    height = nb.mix(over, weft, warp)
+    thread = nb.white(vec=nb.comb(nb.m("FLOOR", h), nb.m("FLOOR", v), 0.0), dims="3D")[0]
+    col = nb.mix(nb.m("MULTIPLY", thread, 0.18), col, "#7d93b8")
+    col = nb.mul_col(col, nb.mix(height, (0.78, 0.78, 0.82, 1), (1, 1, 1, 1)))
+    bump = nb.node("ShaderNodeBump")
+    bump.inputs["Strength"].default_value = 0.35
+    bump.inputs["Distance"].default_value = 0.0008
+    nb.link(bump.inputs["Height"], height)
+    bsdf = nb.node("ShaderNodeBsdfPrincipled")
+    nb.link(bsdf.inputs["Base Color"], col)
+    bsdf.inputs["Roughness"].default_value = 0.95
+    bsdf.inputs["Specular IOR Level"].default_value = 0.15
+    bsdf.inputs["Sheen Weight"].default_value = 0.4
+    nb.link(bsdf.inputs["Normal"], bump.outputs[0])
+    nb.output(bsdf.outputs[0])
     return m
 
 
-def make_keys():
-    m = bpy.data.materials.new("keys")
+def make_wood(name, light, dark, rough=0.38, coat=0.25, ring_scale=7.0):
+    """Laminate / veneer: long grain running along X with figure, fine pores and a little
+    roughness variation (the desk tops)."""
+    m = bpy.data.materials.new(name)
     nb = NB(m)
     tc = nb.node("ShaderNodeTexCoord")
-    xyz = nb.sep(tc.outputs["Object"])
-    kx = nb.m("FRACT", nb.m("MULTIPLY", xyz[0], 1 / 0.019))
-    ky = nb.m("FRACT", nb.m("MULTIPLY", xyz[1], 1 / 0.019))
-    gap = nb.m("MULTIPLY", nb.between(kx, 0.12, 0.88), nb.between(ky, 0.12, 0.88))
-    col = nb.mix(gap, "#0c1018", "#2a3344")
-    nb.output(nb.principled(col, 0.6))
+    o = nb.sep(tc.outputs["Object"])
+    stretched = nb.comb(nb.m("MULTIPLY", o[0], 0.22), o[1], o[2])
+    wave = nb.node("ShaderNodeTexWave", wave_type="BANDS", bands_direction="Y", wave_profile="SIN")
+    nb.link(wave.inputs["Vector"], stretched)
+    wave.inputs["Scale"].default_value = ring_scale
+    wave.inputs["Distortion"].default_value = 7.0
+    wave.inputs["Detail"].default_value = 3.0
+    wave.inputs["Detail Scale"].default_value = 1.4
+    figure = wave.outputs["Fac"]
+    pores = nb.noise(vec=nb.comb(nb.m("MULTIPLY", o[0], 0.05), nb.m("MULTIPLY", o[1], 1.0), o[2]),
+                     dims="3D", scale=420.0, detail=1.0)[0]
+    planks = nb.noise(vec=nb.comb(nb.m("MULTIPLY", o[0], 0.3), o[1], o[2]), dims="3D", scale=4.0, detail=1.0)[0]
+    g = nb.m("ADD", nb.m("MULTIPLY", figure, 0.75), nb.m("MULTIPLY", planks, 0.25))
+    col = nb.mix(nb.m("POWER", g, 1.4), light, dark)
+    col = nb.mix(nb.m("MULTIPLY", nb.m("GREATER_THAN", pores, 0.62), 0.35), col, dark)
+    r = nb.m("ADD", rough, nb.m("MULTIPLY", nb.m("SUBTRACT", g, 0.5), 0.12))
+    bump = nb.node("ShaderNodeBump")
+    bump.inputs["Strength"].default_value = 0.08
+    bump.inputs["Distance"].default_value = 0.0004
+    nb.link(bump.inputs["Height"], nb.m("ADD", nb.m("MULTIPLY", figure, 0.4), nb.m("MULTIPLY", pores, 0.6)))
+    bsdf = nb.node("ShaderNodeBsdfPrincipled")
+    nb.link(bsdf.inputs["Base Color"], col)
+    nb.link(bsdf.inputs["Roughness"], r)
+    bsdf.inputs["Coat Weight"].default_value = coat
+    bsdf.inputs["Coat Roughness"].default_value = 0.12
+    nb.link(bsdf.inputs["Normal"], bump.outputs[0])
+    nb.output(bsdf.outputs[0])
+    m.diffuse_color = hex_lin(light)
+    return m
+
+
+def make_stone(name, base, fleck, rough=0.28, coat=0.5):
+    """Dark engineered stone: fine light flecks and soft cloudy veins (tier3 desk)."""
+    m = bpy.data.materials.new(name)
+    nb = NB(m)
+    tc = nb.node("ShaderNodeTexCoord")
+    fine = nb.noise(vec=tc.outputs["Object"], dims="3D", scale=900.0, detail=0.0)[0]
+    cloud = nb.noise(vec=tc.outputs["Object"], dims="3D", scale=5.0, detail=5.0)[0]
+    col = nb.mix(nb.m("MULTIPLY", cloud, 0.5), base, "#353a46")
+    col = nb.mix(nb.m("GREATER_THAN", fine, 0.72), col, fleck)
+    r = nb.m("ADD", rough, nb.m("MULTIPLY", cloud, 0.08))
+    nb.output(nb.principled(col, r, coat=coat))
+    return m
+
+
+def make_alu(name="alu", color="#c4cbd6", rough=0.26):
+    """Satin aluminium with faint brushing along X (partition caps, posts, pulls)."""
+    m = bpy.data.materials.new(name)
+    nb = NB(m)
+    tc = nb.node("ShaderNodeTexCoord")
+    o = nb.sep(tc.outputs["Object"])
+    brush = nb.noise(vec=nb.comb(nb.m("MULTIPLY", o[0], 0.02), o[1], o[2]), dims="3D", scale=600.0, detail=2.0)[0]
+    r = nb.m("ADD", rough, nb.m("MULTIPLY", nb.m("SUBTRACT", brush, 0.5), 0.12))
+    nb.output(nb.principled(color, r, metal=1.0))
+    return m
+
+
+def make_kb_plate():
+    """Dark keyboard plate with a faint lilac backlight that shows between the keycaps."""
+    m = bpy.data.materials.new("kb_glow")
+    nb = NB(m)
+    bsdf = nb.principled("#11151d", 0.4)
+    em = nb.emission("#B48CE8", 0.16)
+    add = nb.node("ShaderNodeAddShader")
+    nb.link(add.inputs[0], bsdf)
+    nb.link(add.inputs[1], em)
+    nb.output(add.outputs[0])
+    return m
+
+
+DESK_MAT = (0.80, 0.31)
+
+
+def make_desk_mat(sx, sy):
+    """Navy felt desk mat with a rolled, stitched edge. Object space: centred, top at z = 0.003."""
+    m = bpy.data.materials.new("desk_mat")
+    nb = NB(m)
+    tc = nb.node("ShaderNodeTexCoord")
+    o = nb.sep(tc.outputs["Object"])
+    dx = nb.m("SUBTRACT", sx / 2, nb.m("ABSOLUTE", o[0]))
+    dy = nb.m("SUBTRACT", sy / 2, nb.m("ABSOLUTE", o[1]))
+    d = nb.m("MINIMUM", dx, dy)
+    along = nb.m("ADD", o[0], nb.m("MULTIPLY", nb.m("LESS_THAN", dx, dy), nb.m("SUBTRACT", o[1], o[0])))
+    dash = nb.m("LESS_THAN", nb.m("FRACT", nb.m("DIVIDE", along, 0.0055)), 0.62)
+    stitch = nb.m("MULTIPLY", nb.between(d, 0.0055, 0.0072), dash)
+    rim = nb.m("LESS_THAN", d, 0.0035)
+    felt = nb.noise(vec=tc.outputs["Object"], dims="3D", scale=700.0, detail=2.0)[0]
+    col = nb.mix(nb.m("MULTIPLY", felt, 0.35), "#141b2a", "#1f283b")
+    col = nb.mix(nb.m("MULTIPLY", rim, 0.8), col, "#121826")
+    col = nb.mix(stitch, col, "#8d98ad")
+    bump = nb.node("ShaderNodeBump")
+    bump.inputs["Strength"].default_value = 0.25
+    bump.inputs["Distance"].default_value = 0.0005
+    nb.link(bump.inputs["Height"], nb.m("ADD", nb.m("MULTIPLY", felt, 0.6), nb.m("MULTIPLY", stitch, 0.8)))
+    bsdf = nb.node("ShaderNodeBsdfPrincipled")
+    nb.link(bsdf.inputs["Base Color"], col)
+    bsdf.inputs["Roughness"].default_value = 0.85
+    bsdf.inputs["Specular IOR Level"].default_value = 0.2
+    bsdf.inputs["Sheen Weight"].default_value = 0.12
+    nb.link(bsdf.inputs["Normal"], bump.outputs[0])
+    nb.output(bsdf.outputs[0])
     return m
 
 
@@ -553,22 +848,35 @@ def build_materials():
     M["bg_screen"] = make_trading_screen()
     M["tower"] = make_tower()
     M["glass"] = make_glass()
-    M["fabric"] = make_partition_fabric("fabric_blue", "#3d5880")
+    M["fabric"] = make_partition_fabric("fabric_blue", "#3d5880", weave=False)
     M["fabric_hero"] = make_partition_fabric("fabric_hero", "#45628c")
-    M["keys"] = make_keys()
-    M["ceiling"] = mat_basic("ceiling", "#a7b6cc", 0.85)
+    M["alu"] = make_alu()
+    M["ceiling"] = mat_basic("ceiling", "#9cabc2", 0.85)
     M["wall"] = mat_basic("wall", "#7389ab", 0.8)
     M["pillar"] = mat_basic("pillar", "#7b8fb0", 0.7)
     M["skirting"] = mat_basic("skirting", "#2b3850", 0.6)
-    M["desk_top"] = mat_basic("desk_top", "#b7c2d3", 0.4, coat=0.15)
+    M["desk_top"] = mat_basic("desk_top", "#b7c2d3", 0.4, coat=0.15)         # background desks
+    M["hero_top"] = make_wood("hero_top", "#aaa297", "#968b7c", rough=0.5, coat=0.05, ring_scale=16.0)
+    M["edge_band"] = mat_basic("edge_band", "#2b3240", 0.35, coat=0.3)
     M["desk_edge"] = mat_basic("desk_edge", "#9aa8bd", 0.5)
     M["metal"] = mat_basic("metal", "#a9b4c4", 0.35, metal=0.6)
     M["dark_metal"] = mat_basic("dark_metal", "#1c2333", 0.35, metal=0.4)
     M["trim"] = mat_basic("trim", "#b9c4d4", 0.5)
     M["housing"] = mat_basic("housing", "#0a0e16", 0.55, spec=0.3)
+    M["bezel"] = mat_basic("bezel", "#0b0e14", 0.28, spec=0.5, coat=0.3)        # monitor front frame
+    M["shell"] = mat_basic("shell", "#2a303b", 0.32, metal=0.55)               # anodised back shell
+    M["stand"] = mat_basic("stand", "#a3abb8", 0.3, metal=0.85)                # satin silver arms
+    M["cable"] = mat_basic("cable", "#0e1118", 0.5)
+    M["led"] = mat_emit("led", "#2FBF71", 3.0)
     M["mullion"] = mat_basic("mullion", "#2a3447", 0.45, metal=0.3)
     M["kb"] = mat_basic("kb", "#161c28", 0.45)
-    M["mouse"] = mat_basic("mouse", "#1b2231", 0.3)
+    M["kb_case"] = mat_basic("kb_case", "#2a303c", 0.3, metal=0.6)
+    M["key_alpha"] = mat_basic("key_alpha", "#1c222e", 0.42, spec=0.4)
+    M["key_mod"] = mat_basic("key_mod", "#3a4357", 0.42, spec=0.4)
+    M["key_accent"] = mat_basic("key_accent", "#B48CE8", 0.4)
+    M["kb_glow"] = make_kb_plate()
+    M["mouse"] = mat_basic("mouse", "#1d2432", 0.32, coat=0.4)
+    M["desk_mat"] = make_desk_mat(*DESK_MAT)
     M["mug"] = mat_basic("mug", "#eef1f5", 0.25, coat=0.3)
     M["mug_band"] = mat_basic("mug_band", "#B48CE8", 0.35)
     M["coffee"] = mat_basic("coffee", "#3a2416", 0.15)
@@ -586,6 +894,8 @@ def build_materials():
     M["panel"] = mat_emit("ceiling_panel", "#f4f8ff", 1.6)
     M["phone"] = mat_basic("phone", "#1a2130", 0.3)
     M["phone_scr"] = mat_emit("phone_scr", "#22365a", 0.8)
+    M["phone_glass"] = mat_basic("phone_glass", "#07090d", 0.08, coat=1.0)
+    M["soil"] = mat_basic("soil", "#2b2119", 0.95)
     M["binder"] = mat_basic("binder", "#5b7bb0", 0.6)
     M["binder2"] = mat_basic("binder2", "#2f4166", 0.6)
 
@@ -642,7 +952,7 @@ def build_room(Y1=ROOM_Y1, pillar=True):
             ld = bpy.data.lights.new("panel", "AREA")
             ld.shape = "RECTANGLE"
             ld.size, ld.size_y = 1.2, 0.6
-            ld.energy = 38.0
+            ld.energy = 32.0
             ld.color = hex_lin("#eaf1ff")[:3]
             lo = bpy.data.objects.new("panel_light", ld)
             lo.location = (ix, iy, CEIL - 0.03)
@@ -699,19 +1009,95 @@ def chair_instance(name, loc, rot_z, src, collection="Office"):
     return e
 
 
-def monitor(name, center, w, h, screen_mat, collection="Office", bezel=0.015, depth=0.03, parent=None):
-    """Monitor housing whose front face sits just behind a screen plane at `center`
-    (in the parent's space when `parent` is given)."""
+def monitor(name, center, w, h, screen_mat, collection="Office", bezel=0.008, chin=0.016, parent=None):
+    """Thin-bezel monitor whose front face sits just behind a screen plane at `center`
+    (in the parent's space when `parent` is given): a chamfered front frame with a small,
+    logo-free chin, a tapered back shell and a VESA boss. Meshes are cached, so the
+    background monitors cost almost nothing."""
     x, y, z = center
-    hb = box(name + "_housing", (w + 2 * bezel, depth, h + 2 * bezel), (x, y + 0.003 + depth / 2, z),
-             M["housing"], bevel=0.006, collection=collection)
-    back = box(name + "_back", (w * 0.6, 0.03, h * 0.55), (x, y + depth + 0.015, z), M["housing"],
-               bevel=0.01, collection=collection)
+    fw, fh, fd = w + 2 * bezel, h + bezel + chin, 0.011
+    zc = z + (bezel - chin) / 2
+    frame = add_obj(name + "_frame", box_mesh(fw, fd, fh, bevel=0.0035, seg=3),
+                    (x, y + 0.0008 + fd / 2, zc), M["bezel"], collection=collection)
+    sd = 0.034
+    shell = add_obj(name + "_shell", shell_mesh(fw - 0.014, sd, fh - 0.014, (0.66, 0.62), bevel=0.009),
+                    (x, y + fd - 0.002 + sd / 2, zc), M["shell"], collection=collection)
+    boss = add_obj(name + "_vesa", box_mesh(0.105, 0.012, 0.105, bevel=0.003),
+                   (x, y + fd + sd - 0.003, z), M["shell"], collection=collection)
     scr = plane_xz(name, w, h, (x, y, z), screen_mat, collection=collection)
     if parent is not None:
-        for ob in (hb, back, scr):
+        for ob in (frame, shell, boss, scr):
             ob.parent = parent
     return scr
+
+
+def bar_between(name, p0, p1, size, mat, collection):
+    """Rounded bar from p0 to p1 (a monitor-arm segment); size is (width, height)."""
+    a, b = Vector(p0), Vector(p1)
+    d = b - a
+    rot = d.to_track_quat("Y", "Z").to_euler()
+    return box(name, (size[0], d.length + size[0] * 0.6, size[1]), (a + b) / 2, mat,
+               bevel=min(size) * 0.45, seg=3, rot=rot, collection=collection)
+
+
+def build_monitor_stand(C):
+    """Dual-monitor pole stand: a clamp on the back edge of the desk, a round pole and two
+    gas-spring arms. The top arm leaves its collar at eye level, so it shows in the gap
+    between the screens; the rest hides behind the monitors."""
+    st, sh = M["stand"], M["shell"]
+    py, top_z = 0.355, 1.47
+    cyl("stand_pole", 0.019, top_z - DESK_H, (0, py, (top_z + DESK_H) / 2), st, collection=C, n=32)
+    cyl("stand_cap", 0.021, 0.012, (0, py, top_z + 0.006), sh, collection=C, n=32)
+    cyl("stand_cable", 0.0045, 1.36 - DESK_H, (0.027, py + 0.012, (1.36 + DESK_H) / 2), M["cable"], collection=C, n=10)
+    # clamp around the back edge of the desk (desk top 0.71 to 0.75, back edge at y = 0.40)
+    box("clamp_top", (0.075, 0.09, 0.014), (0, 0.372, DESK_H + 0.007), st, bevel=0.004, collection=C)
+    box("clamp_spine", (0.075, 0.016, 0.085), (0, 0.409, DESK_H - 0.028), st, bevel=0.004, collection=C)
+    box("clamp_jaw", (0.075, 0.07, 0.012), (0, 0.38, DESK_H - 0.064), st, bevel=0.003, collection=C)
+    cyl("clamp_knob", 0.018, 0.012, (0, 0.375, DESK_H - 0.08), sh, collection=C, n=20)
+
+    head_y = SCREEN_TOP_C[1] + 0.011 + 0.034 + 0.012          # just behind the VESA boss
+    for zc, z0, sx in ((SCREEN_TOP_C[2], 1.168, 1), (SCREEN_BOT_C[2], SCREEN_BOT_C[2], -1)):
+        cyl("arm_collar", 0.027, 0.04, (0, py, z0), sh, collection=C, n=32)
+        elbow = (sx * 0.12, 0.30, (z0 + zc) / 2 + (0.03 if z0 < zc else 0.0))
+        bar_between("arm_upper", (sx * 0.012, py - 0.012, z0), elbow, (0.034, 0.03), st, C)
+        cyl("arm_elbow", 0.018, 0.05, elbow, sh, collection=C, n=24)
+        bar_between("arm_fore", elbow, (0, head_y + 0.01, zc), (0.03, 0.026), st, C)
+        box("arm_head", (0.05, 0.03, 0.07), (0, head_y, zc), sh, bevel=0.008, collection=C)
+
+
+def build_keyboard(C, loc, rot_z=0.0):
+    """Tenkeyless keyboard: a wedge case, individually bevelled keycaps on a staggered layout
+    (lilac Esc and Enter, lighter modifiers) and a faint lilac backlight between the keys."""
+    W, D, hf, hb = 0.362, 0.136, 0.015, 0.026
+    root = bpy.data.objects.new("kb_root", None)
+    root.location = loc
+    root.rotation_euler = (0, 0, rot_z)
+    coll(C).objects.link(root)
+    add_obj("kb_case", wedge_mesh(W, D, hf, hb, bevel=0.005), (0, 0, 0), M["kb_case"], collection=C, parent=root)
+    plate = bpy.data.objects.new("kb_plate", None)
+    plate.parent = root
+    plate.location = (0, 0, (hf + hb) / 2)
+    plate.rotation_euler = (math.atan((hb - hf) / D), 0, 0)
+    coll(C).objects.link(plate)
+    glow = bpy.data.meshes.new("kb_glow")
+    gw, gd = W - 0.016, D - 0.016
+    glow.from_pydata([(-gw / 2, -gd / 2, 0), (gw / 2, -gd / 2, 0), (gw / 2, gd / 2, 0), (-gw / 2, gd / 2, 0)], [], [(0, 1, 2, 3)])
+    add_obj("kb_glow", glow, (0, 0, 0.0004), M["kb_glow"], collection=C, parent=plate)
+    keys = add_obj("kb_keys", keycaps_mesh(), (0, 0, 0.0018), None, collection=C, parent=plate)
+    for k in ("key_alpha", "key_mod", "key_accent"):
+        keys.data.materials.append(M[k])
+    return root
+
+
+def build_mouse(C, loc, rot_z=0.0):
+    me = mouse_mesh()
+    mo = add_obj("mouse", me, loc, M["mouse"], rot=(0, 0, rot_z), collection=C)
+    # scroll wheel, sunk into the shell between the buttons
+    add_obj("mouse_wheel", cyl_mesh(0.0062, 0.0055, 16), (0, 0.022, MOUSE_H(0.022 / 0.058) - 0.003), M["key_alpha"],
+            rot=(0, math.radians(90), 0), collection=C, parent=mo)
+    add_obj("mouse_seam", box_mesh(0.0009, 0.05, 0.003), (0, 0.032, MOUSE_H(0.032 / 0.058) - 0.0012), M["cable"],
+            collection=C, parent=mo)
+    return mo
 
 
 def build_hero_desk():
@@ -720,8 +1106,10 @@ def build_hero_desk():
     dy0, dy1 = -0.42, 0.40
     dw = 1.62
     dyc = (dy0 + dy1) / 2
-    box("hero_desk_top", (dw, dy1 - dy0, top_th), (0, dyc, DESK_H - top_th / 2), M["desk_top"], bevel=0.008, collection=C)
-    box("hero_desk_edge", (dw, 0.012, top_th - 0.012), (0, dy0 - 0.001, DESK_H - top_th / 2), M["desk_edge"], collection=C)
+    box("hero_desk_top", (dw, dy1 - dy0, top_th), (0, dyc, DESK_H - top_th / 2), M["hero_top"], bevel=0.003, seg=3, collection=C)
+    # 2 mm edge band, slightly proud of the top, along the front
+    box("hero_desk_edge", (dw + 0.002, 0.003, top_th), (0, dy0 - 0.0005, DESK_H - top_th / 2), M["edge_band"],
+        bevel=0.001, collection=C)
     for sx in (-1, 1):
         box("hero_desk_leg", (0.04, dy1 - dy0 - 0.08, DESK_H - top_th), (sx * (dw / 2 - 0.06), dyc, (DESK_H - top_th) / 2),
             M["desk_edge"], bevel=0.005, collection=C)
@@ -730,50 +1118,49 @@ def build_hero_desk():
     box("hero_pedestal", (0.4, 0.55, 0.6), (0.52, dyc + 0.08, 0.31), M["desk_edge"], bevel=0.01, collection=C)
     for k in range(3):
         box("drawer_line", (0.36, 0.005, 0.004), (0.52, dyc + 0.08 - 0.278, 0.2 + k * 0.17), M["trim"], collection=C)
+        box("drawer_pull", (0.12, 0.012, 0.01), (0.52, dyc + 0.08 - 0.282, 0.28 + k * 0.17 - 0.06 * (k == 2)), M["alu"],
+            bevel=0.004, collection=C)
 
-    # partitions
+    # partitions: woven fabric panels with rounded aluminium caps and posts
     ph = 1.12
     py = 0.47
     box("hero_partition_back", (1.8, 0.05, ph), (0, py, ph / 2), M["fabric_hero"], bevel=0.008, collection=C)
-    box("hero_partition_cap", (1.82, 0.065, 0.03), (0, py, ph + 0.012), M["trim"], bevel=0.008, collection=C)
+    box("hero_partition_cap", (1.82, 0.064, 0.03), (0, py, ph + 0.012), M["alu"], bevel=0.012, seg=4, collection=C)
+    box("hero_partition_kick", (1.8, 0.056, 0.08), (0, py, 0.04), M["alu"], bevel=0.004, collection=C)
     for sx in (-1, 1):
         x = sx * 0.9
         box("hero_partition_side", (0.05, 1.3, ph), (x, py - 0.65, ph / 2), M["fabric_hero"], bevel=0.008, collection=C)
-        box("hero_partition_side_cap", (0.065, 1.32, 0.03), (x, py - 0.65, ph + 0.012), M["trim"], bevel=0.008, collection=C)
-        box("hero_partition_post", (0.07, 0.07, ph + 0.02), (x, py - 1.3, (ph + 0.02) / 2), M["trim"], bevel=0.01, collection=C)
+        box("hero_partition_side_cap", (0.064, 1.32, 0.03), (x, py - 0.65, ph + 0.012), M["alu"], bevel=0.012, seg=4, collection=C)
+        box("hero_partition_side_kick", (0.056, 1.3, 0.08), (x, py - 0.65, 0.04), M["alu"], bevel=0.004, collection=C)
+        box("hero_partition_post", (0.07, 0.07, ph + 0.02), (x, py - 1.3, (ph + 0.02) / 2), M["alu"], bevel=0.014, seg=4, collection=C)
+        box("hero_partition_post", (0.07, 0.07, ph + 0.02), (x, py, (ph + 0.02) / 2), M["alu"], bevel=0.014, seg=4, collection=C)
 
     # sticky notes on the back partition (visible at the edges of CAM_main) and the side walls
     notes = [((-0.40, 1.02), "sticky_p", 6), ((-0.30, 0.90), "sticky_y", -4), ((0.36, 0.96), "sticky_y", 3),
              ((0.46, 0.86), "sticky_g", -7), ((0.62, 1.00), "sticky_p", 5), ((-0.62, 0.88), "sticky_y", -2)]
     for (x, z), mname, deg in notes:
-        box("sticky", (0.075, 0.004, 0.075), (x, py - 0.028, z), M[mname], rot=(0, math.radians(deg), 0), collection=C)
+        box("sticky", (0.075, 0.003, 0.075), (x, py - 0.027, z), M[mname], bevel=0.0012, rot=(0, math.radians(deg), 0), collection=C)
     for (y, z), mname in [((0.05, 0.95), "sticky_y"), ((-0.1, 0.88), "sticky_g")]:
-        box("sticky", (0.004, 0.075, 0.075), (-0.872, y, z), M[mname], collection=C)
+        box("sticky", (0.003, 0.075, 0.075), (-0.873, y, z), M[mname], bevel=0.0012, collection=C)
 
-    # --- hero monitors (contract geometry)
+    # --- hero monitors (contract geometry) on a pole stand
     top = monitor("HERO_screen_top", SCREEN_TOP_C, SCREEN_W, SCREEN_H, M["hero_screen"], collection=C)
     bot = monitor("HERO_screen_bottom", SCREEN_BOT_C, SCREEN_W, SCREEN_H, M["hero_screen"], collection=C)
-    # stand: base plate, pole, two VESA arms
-    sy = 0.29
-    box("stand_base", (0.30, 0.22, 0.018), (0, sy - 0.02, DESK_H + 0.009), M["dark_metal"], bevel=0.008, collection=C)
-    box("stand_pole", (0.05, 0.04, 0.74), (0, sy, DESK_H + 0.37), M["dark_metal"], bevel=0.008, collection=C)
-    box("stand_cap", (0.06, 0.05, 0.02), (0, sy, DESK_H + 0.745), M["dark_metal"], bevel=0.006, collection=C)
-    for z in (SCREEN_TOP_C[2], SCREEN_BOT_C[2]):
-        box("stand_arm", (0.08, sy - 0.22, 0.05), (0, (0.22 + sy) / 2, z), M["dark_metal"], bevel=0.006, collection=C)
-        box("vesa", (0.12, 0.012, 0.12), (0, 0.226, z), M["dark_metal"], collection=C)
+    # tiny power LED on the bottom monitor's chin
+    box("monitor_led", (0.004, 0.002, 0.0016), (0.25, SCREEN_BOT_C[1] - 0.0002, SCREEN_BOT_C[2] - SCREEN_H / 2 - 0.009),
+        M["led"], collection=C)
+    build_monitor_stand(C)
 
-    # keyboard + mouse + pad
-    kb = box("keyboard", (0.44, 0.15, 0.022), (-0.04, -0.20, DESK_H + 0.011), M["kb"], bevel=0.006, collection=C)
-    box("keys", (0.41, 0.12, 0.004), (-0.04, -0.20, DESK_H + 0.024), M["keys"], collection=C)
-    box("mousepad", (0.24, 0.2, 0.003), (0.36, -0.18, DESK_H + 0.0015), M["kb"], bevel=0.003, collection=C)
-    mo = box("mouse", (0.06, 0.1, 0.03), (0.37, -0.18, DESK_H + 0.018), M["mouse"], bevel=0.014, seg=3, collection=C)
-    mo.rotation_euler = (0, 0, math.radians(-8))
+    # desk mat, keyboard and mouse
+    add_obj("desk_mat", rounded_slab_mesh(DESK_MAT[0], DESK_MAT[1], 0.003, 0.02), (0.05, -0.16, DESK_H), M["desk_mat"], collection=C)
+    build_keyboard(C, (-0.045, -0.155, DESK_H + 0.003), math.radians(1.2))
+    build_mouse(C, (0.255, -0.15, DESK_H + 0.003), math.radians(-7))
 
     # mug with coffee and a lilac band
     mx, my = -0.58, -0.05
-    cyl("mug", 0.042, 0.1, (mx, my, DESK_H + 0.05), M["mug"], collection=C, n=28)
-    cyl("mug_band", 0.0435, 0.018, (mx, my, DESK_H + 0.07), M["mug_band"], collection=C, n=28)
-    cyl("coffee", 0.038, 0.004, (mx, my, DESK_H + 0.093), M["coffee"], collection=C, n=28)
+    cyl("mug", 0.042, 0.1, (mx, my, DESK_H + 0.05), M["mug"], collection=C, n=32)
+    cyl("mug_band", 0.0435, 0.018, (mx, my, DESK_H + 0.07), M["mug_band"], collection=C, n=32)
+    cyl("coffee", 0.038, 0.004, (mx, my, DESK_H + 0.093), M["coffee"], collection=C, n=32)
     tor = bpy.data.meshes.new("mug_handle")
     bm = bmesh.new()
     seg, ring = 16, 8
@@ -804,30 +1191,35 @@ def build_hero_desk():
     box("binder", (0.06, 0.26, 0.31), (-0.73, 0.28, DESK_H + 0.155), M["binder"], bevel=0.004, collection=C)
     box("binder2", (0.05, 0.26, 0.31), (-0.67, 0.28, DESK_H + 0.155), M["binder2"], bevel=0.004, collection=C)
     box("sticky_desk", (0.075, 0.075, 0.003), (0.62, -0.02, DESK_H + 0.0015), M["sticky_y"], rot=(0, 0, math.radians(12)), collection=C)
-    # phone
-    box("phone", (0.075, 0.15, 0.008), (0.6, -0.22, DESK_H + 0.004), M["phone"], bevel=0.003, rot=(0, 0, math.radians(-14)), collection=C)
+    # phone: rounded slab with a dark glass face
+    ph_ = add_obj("phone", rounded_slab_mesh(0.072, 0.15, 0.008, 0.009), (0.6, -0.22, DESK_H), M["phone"],
+                  rot=(0, 0, math.radians(-14)), collection=C)
+    add_obj("phone_glass", rounded_slab_mesh(0.068, 0.146, 0.0006, 0.008), (0, 0, 0.008), M["phone_glass"], collection=C, parent=ph_)
 
     # small plant (right back)
     px, py_ = 0.62, 0.25
-    cyl("pot", 0.06, 0.1, (px, py_, DESK_H + 0.05), M["plant_pot"], collection=C, n=20, r2=0.07)
+    cyl("pot", 0.06, 0.1, (px, py_, DESK_H + 0.05), M["plant_pot"], collection=C, n=32, r2=0.07)
+    cyl("soil", 0.064, 0.004, (px, py_, DESK_H + 0.094), M["soil"], collection=C, n=32)
     rng = random.Random(4)
-    for k in range(14):
-        a = k * 2 * math.pi / 14 + rng.uniform(-0.2, 0.2)
-        tilt = rng.uniform(0.25, 0.9)
+    leaf_me = leaf_mesh()
+    for k in range(16):
+        a = k * 2 * math.pi / 16 + rng.uniform(-0.2, 0.2)
+        tilt = rng.uniform(0.25, 0.95)
         L = rng.uniform(0.12, 0.2)
-        off = 0.02 + math.sin(tilt) * L / 2
-        box("leaf", (0.045, 0.006, L), (px + math.cos(a) * off, py_ + math.sin(a) * off, DESK_H + 0.09 + math.cos(tilt) * L / 2),
-            M["leaf"], bevel=0.002, rot=(tilt, 0, a + math.pi / 2), collection=C)
+        off = 0.015 + math.sin(tilt) * L / 2
+        lf = add_obj("leaf", leaf_me, (px + math.cos(a) * off, py_ + math.sin(a) * off, DESK_H + 0.09 + math.cos(tilt) * L / 2),
+                     M["leaf"], rot=(tilt, 0, a + math.pi / 2), collection=C)
+        lf.scale = (0.024, 0.004, L / 2)
 
     # warm desk lamp (left back): the warm accent
     lx, ly = -0.5, 0.3
-    cyl("lamp_base", 0.07, 0.02, (lx, ly, DESK_H + 0.01), M["lamp"], collection=C, n=24)
-    box("lamp_arm1", (0.018, 0.018, 0.36), (lx, ly, DESK_H + 0.18), M["lamp"], rot=(math.radians(-12), 0, 0), collection=C)
-    box("lamp_arm2", (0.018, 0.018, 0.26), (lx, ly - 0.12, DESK_H + 0.38), M["lamp"], rot=(math.radians(-70), 0, 0), collection=C)
-    cyl("lamp_shade", 0.06, 0.09, (lx, ly - 0.24, DESK_H + 0.4), M["lamp"], collection=C, n=24, r2=0.035)
-    g = cyl("lamp_bulb", 0.05, 0.006, (lx, ly - 0.24, DESK_H + 0.354), M["lamp_glow"], collection=C, n=24)
+    cyl("lamp_base", 0.07, 0.02, (lx, ly, DESK_H + 0.01), M["lamp"], collection=C, n=32)
+    box("lamp_arm1", (0.018, 0.018, 0.36), (lx, ly, DESK_H + 0.18), M["lamp"], bevel=0.006, rot=(math.radians(-12), 0, 0), collection=C)
+    box("lamp_arm2", (0.018, 0.018, 0.26), (lx, ly - 0.12, DESK_H + 0.38), M["lamp"], bevel=0.006, rot=(math.radians(-70), 0, 0), collection=C)
+    cyl("lamp_shade", 0.06, 0.09, (lx, ly - 0.24, DESK_H + 0.4), M["lamp"], collection=C, n=32, r2=0.035)
+    g = cyl("lamp_bulb", 0.05, 0.006, (lx, ly - 0.24, DESK_H + 0.354), M["lamp_glow"], collection=C, n=32)
     ld = bpy.data.lights.new("lamp", "SPOT")
-    ld.energy = 14.0
+    ld.energy = 16.0
     ld.color = hex_lin("#ffbf78")[:3]
     ld.spot_size = math.radians(110)
     ld.spot_blend = 0.6
@@ -836,15 +1228,10 @@ def build_hero_desk():
     lo.location = (lx, ly - 0.24, DESK_H + 0.345)
     coll("Lights").objects.link(lo)
 
-    # key light over the hero desk (soft shadows from the monitors)
-    ld = bpy.data.lights.new("hero_key", "AREA")
-    ld.shape = "RECTANGLE"
-    ld.size, ld.size_y = 1.2, 0.6
-    ld.energy = 14.0
-    ld.color = hex_lin("#eef3ff")[:3]
-    lo = bpy.data.objects.new("hero_key", ld)
-    lo.location = (0.0, -0.8, CEIL - 0.03)
-    coll("Lights").objects.link(lo)
+    # soft key from above the sitter's left shoulder, and a cool rim from behind the partition
+    # that picks out the monitor tops, the pole and the partition cap
+    area_light("hero_key", (0.9, 0.7), (-0.55, -0.6, 2.3), (0.0, 0.1, 0.85), 28.0, "#f1f4ff")
+    area_light("hero_rim", (1.4, 0.3), (0.25, 0.85, 2.15), (0.0, -0.2, 1.0), 26.0, "#cddcff")
     return top, bot
 
 
@@ -1054,7 +1441,7 @@ def variant_tier2(chair_src):
     build_wing_monitors()
     build_bg_desks(chair_src, open_floor=True)
     build_hanging_ticker()
-    set_mat("hero_desk_top", mat_basic("walnut_top", "#5a3d2b", 0.35, coat=0.35))
+    set_mat("hero_desk_top", make_wood("walnut_top", "#6e4b33", "#3b271a", rough=0.34, coat=0.4, ring_scale=9.0))
     set_mat("hero_desk_edge", mat_basic("walnut_edge", "#3e2a1e", 0.4))
 
 
@@ -1083,7 +1470,7 @@ def variant_tier3():
         box("mullion3", (0.06, 0.12, CEIL), (x, WIN3_Y, CEIL / 2), M["mullion"], collection=C)
     box("transom3", (2 * ROOM_X, 0.1, 0.05), (0, WIN3_Y, 0.42), M["mullion"], collection=C)
     build_wing_monitors(0.32)
-    set_mat("hero_desk_top", mat_basic("stone_top", "#262a33", 0.28, coat=0.5))
+    set_mat("hero_desk_top", make_stone("stone_top", "#23272f", "#5d6472"))
     set_mat("hero_desk_edge", mat_basic("stone_edge", "#1b1e25", 0.35))
     # slightly warm-tinted glass (no glossy: it mirrored the ceiling lights as bright bands)
     g = bpy.data.materials.new("window_glass3")
@@ -1112,8 +1499,9 @@ DUSK_SKY = [(0.0, "#f3a46c"), (0.6, "#1d2a5c"), (0.07, "#eaa38e"), (0.17, "#b98f
 
 def variant_fired():
     """Tier1 desk, cleared out: belongings packed in a cardboard box, colder and dimmer light."""
-    remove_objects({"keyboard", "keys", "mousepad", "mouse", "mug", "mug_band", "coffee", "mug_handle",
-                    "paper_a", "paper_b", "paper_c", "binder", "binder2", "sticky_desk", "phone", "pot", "leaf"})
+    remove_objects({"kb_root", "kb_case", "kb_plate", "kb_glow", "kb_keys", "desk_mat", "mouse", "mouse_wheel",
+                    "mouse_seam", "mug", "mug_band", "coffee", "mug_handle",
+                    "paper_a", "paper_b", "paper_c", "binder", "binder2", "sticky_desk", "phone", "phone_glass", "pot", "soil", "leaf"})
     # leave a single sticky on the partition
     for ob in list(bpy.data.objects):
         if ob.name.split(".")[0] == "sticky" and not (abs(ob.location.x - 0.36) < 0.01):
@@ -1179,13 +1567,7 @@ def variant_fired():
     # small plant in the front left corner
     px, py = -0.135, -0.075
     add_obj("box_pot", cyl_mesh(0.045, 0.085, 20, r2=0.052), (px, py, t + 0.0425), M["plant_pot"], collection=C, parent=root)
-    bm = bmesh.new()
-    bmesh.ops.create_uvsphere(bm, u_segments=12, v_segments=8, radius=1.0)
-    leaf_me = bpy.data.meshes.new("leaf_blade")
-    bm.to_mesh(leaf_me)
-    bm.free()
-    for poly in leaf_me.polygons:
-        poly.use_smooth = True
+    leaf_me = leaf_mesh()
     rng = random.Random(9)
     for k in range(18):
         a = k * 2 * math.pi / 18 + rng.uniform(-0.2, 0.2)
@@ -1202,8 +1584,8 @@ def variant_fired():
         if n == "panel_light":
             ob.data.energy *= 0.72
             ob.data.color = hex_lin("#d8e4ff")[:3]
-        elif n == "hero_key":
-            ob.data.energy = 9.0
+        elif n in ("hero_key", "hero_rim"):
+            ob.data.energy *= 0.65
             ob.data.color = hex_lin("#d6e2ff")[:3]
         elif n == "lamp_light":
             ob.data.energy = 0.0
