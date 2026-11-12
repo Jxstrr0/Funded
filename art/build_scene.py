@@ -964,7 +964,7 @@ def make_ticker():
     tc = nb.node("ShaderNodeTexCoord")
     uvs = nb.sep(tc.outputs["UV"])
     u, v = uvs[0], uvs[1]
-    cu = nb.m("MULTIPLY", u, 110.0)                 # character cells along the board
+    cu = nb.m("MULTIPLY", u, 150.0)                 # character cells along the board
     ci = nb.m("FLOOR", cu)
     px = nb.m("FLOOR", nb.m("MULTIPLY", nb.m("FRACT", cu), 4.0))      # 3 lit columns + 1 gap
     tv = nb.m("DIVIDE", nb.m("SUBTRACT", v, 0.24), 0.52)
@@ -981,7 +981,7 @@ def make_ticker():
     rule = nb.m("MAXIMUM", nb.m("LESS_THAN", v, 0.07), nb.m("GREATER_THAN", v, 0.93))
     out = nb.mix(glyph, "#081226", col)
     out = nb.mix(nb.m("MULTIPLY", rule, 0.7), out, "#B48CE8")
-    nb.output(nb.emission(out, 1.4))
+    nb.output(nb.emission(out, 1.1))
     return m
 
 
@@ -1020,7 +1020,7 @@ def make_photo():
     return m
 
 
-def build_wing_monitors(strength=0.4):
+def build_wing_monitors(strength=0.3):
     """Two angled wing monitors flanking the hero pair, tucked behind its housing.
     Only their inner edges reach into frame, at the left and right edges of CAM_main."""
     mat = make_trading_screen("wing_screen", strength)
@@ -1037,7 +1037,7 @@ def build_wing_monitors(strength=0.4):
 
 def build_hanging_ticker():
     C = "Variant"
-    L, H, y, z = 6.0, 0.24, 3.4, 2.56
+    L, H, y, z = 6.0, 0.2, 3.4, 2.7
     box("ticker_housing", (L + 0.06, 0.08, H + 0.06), (0, y + 0.045, z), M["housing"], bevel=0.01, collection=C)
     plane_xz("ticker", L, H, (0, y, z), make_ticker(), collection=C)
     for x in (-2.2, 2.2):
@@ -1082,21 +1082,15 @@ def variant_tier3():
     for x in (-0.66, 0.66):
         box("mullion3", (0.06, 0.12, CEIL), (x, WIN3_Y, CEIL / 2), M["mullion"], collection=C)
     box("transom3", (2 * ROOM_X, 0.1, 0.05), (0, WIN3_Y, 0.42), M["mullion"], collection=C)
-    build_wing_monitors(0.45)
+    build_wing_monitors(0.32)
     set_mat("hero_desk_top", mat_basic("stone_top", "#262a33", 0.28, coat=0.5))
     set_mat("hero_desk_edge", mat_basic("stone_edge", "#1b1e25", 0.35))
-    # faint reflections in the glass so it reads as a window
+    # slightly warm-tinted glass (no glossy: it mirrored the ceiling lights as bright bands)
     g = bpy.data.materials.new("window_glass3")
     nb = NB(g)
     t = nb.node("ShaderNodeBsdfTransparent")
-    t.inputs[0].default_value = hex_lin("#f3eef0")
-    gl = nb.node("ShaderNodeBsdfGlossy")
-    gl.inputs["Roughness"].default_value = 0.05
-    mx = nb.node("ShaderNodeMixShader")
-    mx.inputs[0].default_value = 0.06
-    nb.link(mx.inputs[1], t.outputs[0])
-    nb.link(mx.inputs[2], gl.outputs[0])
-    nb.output(mx.outputs[0])
+    t.inputs[0].default_value = hex_lin("#f4eeec")
+    nb.output(t.outputs[0])
     set_mat("window_glass", g)
     build_skyline_near()
     # low warm sun from beyond the glass
@@ -1128,7 +1122,7 @@ def variant_fired():
     kraft = make_kraft()
     W, D, H, t = 0.42, 0.31, 0.135, 0.006
     root = bpy.data.objects.new("box_root", None)
-    root.location = (-0.03, -0.235, DESK_H)
+    root.location = (0.0, -0.265, DESK_H)
     root.rotation_euler = (0, 0, math.radians(5))
     coll(C).objects.link(root)
 
@@ -1141,7 +1135,7 @@ def variant_fired():
     for sx in (-1, 1):
         part("box_wall", (t, D - 2 * t, H), (sx * (W - t) / 2, 0, H / 2), kraft)
     # flaps folded outward and drooping (kept low so nothing rises toward the screens)
-    for sy, fl, ang in ((-1, 0.15, 128), (1, 0.15, 132)):
+    for sy, fl, ang in ((-1, 0.15, 128), (1, 0.13, 140)):
         hinge = bpy.data.objects.new("flap_hinge", None)
         hinge.parent = root
         hinge.location = (0, sy * D / 2, H)
@@ -1159,10 +1153,10 @@ def variant_fired():
 
     # contents (box space: +y is the back of the box, z = 0 is the desk)
     # folders and a binder standing along the back wall
-    for k, (mname, th, lean, x) in enumerate([("binder", 0.03, -8, -0.12), ("binder2", 0.022, -12, -0.08),
-                                               ("paper2", 0.012, -16, 0.0), ("binder", 0.02, -18, 0.08)]):
-        part("box_folder", (0.15 if mname.startswith("paper") else 0.07, th, 0.135),
-             (x, D / 2 - 0.035 - k * 0.012, 0.072), M[mname], rot=(math.radians(lean), 0, math.radians(90) if not mname.startswith("paper") else 0),
+    for k, (mname, th, lean, x) in enumerate([("binder", 0.03, -8, -0.13), ("binder2", 0.022, -12, -0.09),
+                                               ("paper2", 0.012, -16, 0.02), ("binder", 0.02, -18, 0.11)]):
+        part("box_folder", (0.17 if mname.startswith("paper") else 0.07, th, 0.13),
+             (x, D / 2 - 0.03 - k * 0.006, 0.07), M[mname], rot=(math.radians(lean), 0, math.radians(90) if not mname.startswith("paper") else 0),
              bevel=0.002)
     # papers fanned on a stack, with the mug on top
     part("box_stack", (0.2, 0.15, 0.05), (0.08, -0.02, t + 0.025), M["paper2"], bevel=0.003)
@@ -1174,8 +1168,9 @@ def variant_fired():
     # photo frame leaning in the middle
     fr = bpy.data.objects.new("photo_root", None)
     fr.parent = root
-    fr.location = (-0.03, 0.0, t)
-    fr.rotation_euler = (math.radians(18), 0, math.radians(-6))
+    part("box_book", (0.17, 0.12, 0.03), (-0.02, 0.06, t + 0.015), M["binder2"], bevel=0.003)
+    fr.location = (-0.02, 0.05, t + 0.03)
+    fr.rotation_euler = (math.radians(24), 0, math.radians(-6))
     coll(C).objects.link(fr)
     fw, fh = 0.15, 0.115
     part("photo_frame", (fw, 0.012, fh), (0, 0.006, fh / 2), mat_basic("photo_frame", "#2a2420", 0.4), bevel=0.003, parent=fr)
@@ -1184,21 +1179,29 @@ def variant_fired():
     # small plant in the front left corner
     px, py = -0.135, -0.075
     add_obj("box_pot", cyl_mesh(0.045, 0.085, 20, r2=0.052), (px, py, t + 0.0425), M["plant_pot"], collection=C, parent=root)
+    bm = bmesh.new()
+    bmesh.ops.create_uvsphere(bm, u_segments=12, v_segments=8, radius=1.0)
+    leaf_me = bpy.data.meshes.new("leaf_blade")
+    bm.to_mesh(leaf_me)
+    bm.free()
+    for poly in leaf_me.polygons:
+        poly.use_smooth = True
     rng = random.Random(9)
-    for k in range(12):
-        a = k * 2 * math.pi / 12 + rng.uniform(-0.2, 0.2)
-        tilt = rng.uniform(0.3, 0.85)
-        Ll = rng.uniform(0.09, 0.13)
-        off = 0.015 + math.sin(tilt) * Ll / 2
-        part("box_leaf", (0.04, 0.005, Ll), (px + math.cos(a) * off, py + math.sin(a) * off, t + 0.08 + math.cos(tilt) * Ll / 2),
-             M["leaf"], rot=(tilt, 0, a + math.pi / 2), bevel=0.002)
+    for k in range(18):
+        a = k * 2 * math.pi / 18 + rng.uniform(-0.2, 0.2)
+        tilt = rng.uniform(0.45, 1.15)
+        Ll = rng.uniform(0.07, 0.1)
+        off = 0.012 + math.sin(tilt) * Ll / 2
+        lf = add_obj("box_leaf", leaf_me, (px + math.cos(a) * off, py + math.sin(a) * off, t + 0.082 + math.cos(tilt) * Ll / 2),
+                     M["leaf"], rot=(tilt, 0, a + math.pi / 2), collection=C, parent=root)
+        lf.scale = (0.019, 0.004, Ll / 2)
 
     # colder, dimmer light
     for ob in coll("Lights").objects:
         n = ob.name.split(".")[0]
         if n == "panel_light":
-            ob.data.energy *= 0.8
-            ob.data.color = hex_lin("#dce7ff")[:3]
+            ob.data.energy *= 0.72
+            ob.data.color = hex_lin("#d8e4ff")[:3]
         elif n == "hero_key":
             ob.data.energy = 9.0
             ob.data.color = hex_lin("#d6e2ff")[:3]
@@ -1216,7 +1219,7 @@ def variant_fired():
 def check_clear(cam_ob, rects, objs, below=None):
     """Project every vertex in front of the hero screen plane; report any that land inside a hero
     screen rectangle. With `below`, also require every vertex to sit lower in frame than that %."""
-    bad, top_most = 0, 100.0
+    bad, top_most, top_ob = 0, 100.0, ""
     for ob in objs:
         if ob.type != "MESH":
             continue
@@ -1225,8 +1228,8 @@ def check_clear(cam_ob, rects, objs, below=None):
             w = mw @ vtx.co
             p = world_to_camera_view(scene, cam_ob, w)
             fx, fy = p.x * 100, (1 - p.y) * 100
-            if 0 <= fx <= 100:
-                top_most = min(top_most, fy)
+            if 0 <= fx <= 100 and fy < top_most:
+                top_most, top_ob = fy, ob.name
             if w.y >= SCREEN_TOP_C[1] and below is None:
                 continue
             for (l, r, t_, b) in rects.values():
@@ -1235,7 +1238,7 @@ def check_clear(cam_ob, rects, objs, below=None):
                     break
     msg = f"clearance {cam_ob.name}: {bad} vertices of {len(objs)} variant objects inside the hero screen rectangles"
     if below is not None:
-        msg += f"; highest point at {top_most:.2f}% (must be below {below}%)"
+        msg += f"; highest point at {top_most:.2f}% on {top_ob} (must be below {below}%)"
         bad += top_most <= below
     print(msg + ("  OK" if bad == 0 else "  FAIL"))
     return bad == 0
