@@ -221,8 +221,32 @@ function meter(node, used, kind) {
   }
 }
 
+// The balance counts up or down to a new value instead of jumping.
+let balShown = null;
+let balTarget = null;
+let balRaf = 0;
+function setBalance(v) {
+  if (v === balTarget) return;
+  balTarget = v;
+  cancelAnimationFrame(balRaf);
+  if (balShown === null || matchMedia('(prefers-reduced-motion: reduce)').matches) {
+    balShown = v;
+    el.bal.textContent = money(v);
+    return;
+  }
+  const from = balShown;
+  const t0 = performance.now();
+  const step = (t) => {
+    const k = Math.min(1, (t - t0) / 450);
+    balShown = from + (v - from) * (1 - (1 - k) ** 3);
+    el.bal.textContent = money(balShown);
+    if (k < 1) balRaf = requestAnimationFrame(step);
+  };
+  balRaf = requestAnimationFrame(step);
+}
+
 export function renderDesk(snap, day, sizeIndex, mark = null) {
-  el.bal.textContent = money(snap.balance);
+  setBalance(snap.balance);
   const dp = signed(snap.dayPnl);
   el.dayPnl.textContent = dp.text;
   el.dayPnl.className = dp.cls;
@@ -305,7 +329,10 @@ export function hideCoach() {
  * Show a full-frame card. `actions` maps data-action names to callbacks.
  * Buttons inside the html use data-action="name".
  */
+let leaveTimer = 0;
 export function showCard(html, actions = {}, { cls = '', clear = false } = {}) {
+  clearTimeout(leaveTimer);
+  el.cardLayer.classList.remove('leaving');
   el.card.className = 'card ' + cls;
   el.card.innerHTML = html;
   el.cardLayer.classList.toggle('clear', clear);
@@ -317,8 +344,14 @@ export function showCard(html, actions = {}, { cls = '', clear = false } = {}) {
 }
 
 export function hideCard() {
-  el.cardLayer.hidden = true;
-  el.card.innerHTML = '';
+  if (el.cardLayer.hidden) return;
+  clearTimeout(leaveTimer);
+  el.cardLayer.classList.add('leaving');
+  leaveTimer = setTimeout(() => {
+    el.cardLayer.hidden = true;
+    el.cardLayer.classList.remove('leaving');
+    el.card.innerHTML = '';
+  }, 180);
 }
 
 export function rows(list) {

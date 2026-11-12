@@ -20,6 +20,7 @@ export const TIER1 = {
   ],
   defaultSizeIndex: 0,
   next: 'tier2',               // passing this eval promotes you to this tier
+  backdrop: 'assets/desk.jpg', // the desk: back row
 };
 
 // Firm rules for Tier 2 ($50k futures eval). Same shape as Tier 1, scaled to
@@ -54,6 +55,7 @@ export const TIER2 = {
   ],
   defaultSizeIndex: 0,
   next: 'tier3',
+  backdrop: 'assets/desk-tier2.jpg', // mid-floor, more monitors
 };
 
 // Firm rules for Tier 3 ($100k options eval). One stock a day and one strike,
@@ -97,9 +99,17 @@ export const TIER3 = {
   ],
   defaultSizeIndex: 0,
   next: null,                  // top of the ladder
+  backdrop: 'assets/desk-tier3.jpg', // the window seat
 };
 
 export const TIERS = { tier1: TIER1, tier2: TIER2, tier3: TIER3 };
+
+// Studio links and shared art.
+export const STUDIO = {
+  hubUrl: 'https://longlight.games', // "More games" link on the title screen
+  hubLabel: 'More games at longlight.games',
+  firedBackdrop: 'assets/desk-fired.jpg', // the cardboard box
+};
 
 // One trading day.
 export const SESSION = {

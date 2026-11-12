@@ -1,5 +1,6 @@
 // Boot, intro, and the game state machine.
-import { TIER1, TIERS, SESSION, PERKS, TUTORIAL } from './config.js';
+import { TIER1, TIERS, SESSION, PERKS, TUTORIAL, STUDIO } from './config.js';
+import * as fx from './fx.js';
 import { generateDay, candlesUpTo, hashSeed, bookAt } from './engine.js';
 import { newRun, newDay, applyFill, orderDelta, optionOrder, snapshot, closeDay, RULE_TEXT, effectiveRules, applyMulligan } from './rules.js';
 import { quoteAt } from './options.js';
@@ -32,6 +33,7 @@ const S = {
   hold: false,        // tutorial: clock frozen
   allow: null,        // tutorial: allowed actions, null = all
   wired: new Set(),   // Newswire: headlines already announced early
+  tgtMet: false,      // target meter already full (for the one-time pop)
 };
 
 let meta = loadMeta();
@@ -46,6 +48,7 @@ function useRules(rules) {
   ui.setSizes(RULES.sizes, RULES.option ? 'premium budget' : 'buying power');
   ui.setActionLabels(RULES.option ? ['CALL', 'PUT', 'CLOSE'] : ['BUY', 'SELL', 'FLATTEN']);
   if (!RULES.option) ui.renderOptions(null);
+  fx.setBackdrop(RULES.backdrop);
 }
 
 // ---------- helpers ----------
@@ -71,6 +74,9 @@ function render() {
   const m = mark();
   const snap = snapshot(S.run, S.day, m, RULES);
   ui.renderDesk(snap, S.day, S.sizeIndex, m);
+  fx.danger(S.phase === 'running' && !S.tutorial && Math.max(snap.lossUsed, snap.ddUsed) >= 0.8);
+  if (snap.targetProgress >= 1 && !S.tgtMet && S.phase === 'running' && !S.tutorial) { fx.targetHit(); sfx.rep(); }
+  S.tgtMet = snap.targetProgress >= 1 || (S.tgtMet && snap.targetProgress >= 0.95); // slack, so hovering at 100% pops once
   if (RULES.option) {
     const q = quotesAt(S.day.tick);
     const earn = S.market.news.find((n) => n.earnings);
@@ -133,7 +139,7 @@ function trade(side) {
   const p = price();
   const delta = orderDelta(S.day, side, RULES.sizes[S.sizeIndex], p);
   if (delta === 0) { sfx.denied(); ui.flashDenied('MAX SIZE'); setTimeout(() => (S.dirty = true), 950); return; }
-  fill(delta, p);
+  fill(delta, p, side);
   side > 0 ? sfx.buy() : sfx.sell();
   S.tutorial?.onTrade(side > 0 ? 'buy' : 'sell');
 }
@@ -146,19 +152,21 @@ function tradeOption(right) {
   const n = optionOrder(S.day, RULES.sizes[S.sizeIndex], prem, RULES);
   if (n === 0) return denied('MAX SIZE');
   S.day.right = right;
-  fill(n, prem);
+  fill(n, prem, right === 'C' ? 1 : -1);
   right === 'C' ? sfx.buy() : sfx.sell();
 }
 
 function flatten() {
   if (S.phase !== 'running' || S.day.qty === 0 || !allowed('flat')) return;
-  fill(-S.day.qty, mark());
+  fill(-S.day.qty, mark(), 0);
   sfx.flat();
   S.tutorial?.onTrade('flat');
 }
 
-function fill(delta, p) {
+function fill(delta, p, dir = 0) {
   const r = applyFill(S.day.qty, S.day.avg, delta, p, S.day.mult ?? 1);
+  fx.fillFlash(dir);
+  if (Math.abs(r.qty) < Math.abs(S.day.qty) || Math.sign(r.qty) !== Math.sign(S.day.qty)) fx.pnlPop(r.realized);
   S.day.qty = r.qty;
   S.day.avg = r.avg;
   S.day.realized += r.realized;
@@ -178,6 +186,7 @@ function processTick(i) {
     ui.showNews(ev);
     ui.shake();
     sfx.news();
+    fx.buzz(25);
     S.tutorial?.onNews();
   }
   if (S.tutorial || S.day.locked) return true; // no firing in training or on a locked desk
@@ -202,6 +211,8 @@ function useMulligan(rule) {
   S.day.locked = true;
   ui.setTradingEnabled(false);
   ui.shake();
+  fx.screenFlash('bell');
+  fx.buzz([30, 40, 30]);
   sfx.mulligan();
   ui.showNotice(`MULLIGAN USED · ${RULE_TEXT[rule].name}. Desk locked for today.`);
   S.dirty = true;
@@ -264,6 +275,7 @@ function pause() {
   S.phase = 'paused';
   ui.setPaused(true);
   ui.setTradingEnabled(false);
+  fx.danger(false);
   setScene('quiet');
   persist(true);
 }
@@ -300,6 +312,7 @@ function openDay() {
   S.revealed = new Set();
   S.wired = new Set();
   S.lastWarnSec = null;
+  S.tgtMet = true; // no pop for a target already met before the open
   S.phase = 'dayopen';
   setScene('menu');
   ui.hideNews();
@@ -344,6 +357,7 @@ function beginDay() {
   S.prevNow = null;
   ui.setTradingEnabled(true);
   setScene('day');
+  S.tgtMet = snapshot(S.run, S.day, mark(), RULES).targetProgress >= 1;
   render();
   persist(true);
 }
@@ -353,6 +367,8 @@ function closingBell() {
   ui.setBell(null);
   ui.setTradingEnabled(false);
   sfx.bell();
+  fx.screenFlash('bell');
+  fx.danger(false);
   setScene('menu');
   if (S.tutorial) return finishTutorial(S.day.qty !== 0);
   if (S.day.qty !== 0 && !breach('flatAtBell')) return;
@@ -369,7 +385,7 @@ function closingBell() {
   const toTarget = RULES.startBalance + RULES.profitTarget - run.balance;
   ui.showCard(`
     <div class="eyebrow">Day ${result.day} closed</div>
-    <h2 class="${pnl.cls}">${pnl.text}</h2>
+    <h2 class="stamp ${pnl.cls}">${pnl.text}</h2>
     <p>${result.counted ? 'Day counted toward your minimum.' : 'No trades today, so this day did not count.'}</p>
     ${ui.rows([
       ['Balance', ui.money(run.balance)],
@@ -388,15 +404,19 @@ function fire(rule) {
   ui.setBell(null);
   ui.setTradingEnabled(false);
   ui.shake();
+  fx.screenFlash('fired');
+  fx.buzz([60, 40, 140]);
   sfx.fired();
   setScene('menu');
   render();
+  fx.danger(false);
+  fx.setBackdrop(STUDIO.firedBackdrop);
   const t = RULE_TEXT[rule];
   const snap = snapshot(S.run, S.day, mark(), RULES);
   const rep = award(false);
   ui.showCard(`
     <div class="eyebrow">Day ${S.run.day} · ${ui.clockText(minuteNow())}</div>
-    <h1 class="fired">You're fired.</h1>
+    <h1 class="fired stamp">You're fired.</h1>
     <div class="rule-name">${ui.esc(t.name)}</div>
     <p>${ui.esc(t.detail(RULES))}</p>
     ${careerNote()}
@@ -417,7 +437,7 @@ function evalOver(rule) {
   const rep = award(false);
   ui.showCard(`
     <div class="eyebrow">Eval over</div>
-    <h1 class="fired">Not funded.</h1>
+    <h1 class="fired stamp">Not funded.</h1>
     <div class="rule-name">${ui.esc(t.name)}</div>
     <p>${ui.esc(t.detail(RULES))}</p>
     ${careerNote()}
@@ -438,12 +458,14 @@ function careerNote() {
 
 function passed() {
   sfx.pass();
+  fx.screenFlash('pass');
+  fx.buzz([20, 30, 20, 30, 60]);
   const r = S.run;
   const rep = award(true);
   if (RULES.next) return promoted(r, rep);
   ui.showCard(`
     <div class="eyebrow">Eval passed</div>
-    <h1>Funded<span class="dot">.</span></h1>
+    <h1 class="stamp">Funded<span class="dot">.</span></h1>
     <p>You passed ${ui.esc(RULES.name)} in ${r.history.length} days without breaking a rule.</p>
     ${ui.rows([
       ['Final balance', ui.money(r.balance)],
@@ -467,7 +489,7 @@ function promoted(r, rep) {
   persist(true);
   ui.showCard(`
     <div class="eyebrow">Eval passed · promoted</div>
-    <h1>Funded<span class="dot">.</span></h1>
+    <h1 class="stamp">Funded<span class="dot">.</span></h1>
     <p>You passed ${ui.esc(from.name)} in ${r.history.length} days. The desk moves you up to <b>${ui.esc(next.name)}</b>.</p>
     ${ui.rows([
       ['Final balance', ui.money(r.balance)],
@@ -602,6 +624,7 @@ function title() {
     <button class="cta ghost" data-action="tut">Replay tutorial</button>`}
     <button class="cta ghost small" data-action="audio">${AUDIO_LABEL[audioMode()]}</button>
     <div class="fine">Desktop: B buy · S sell · F flatten · 1–3 size · P pause · M sound</div>
+    <a class="hub" href="${ui.esc(STUDIO.hubUrl)}">${ui.esc(STUDIO.hubLabel)}</a>
   `, {
     audio: () => { cycleAudioMode(); title(); },
     start: () => intro(fresh ? startTutorial : () => startRun()),

@@ -117,6 +117,9 @@ button:focus-visible { outline: 0.5cqw solid var(--lilac); outline-offset: 0.3cq
   transition: opacity calc(var(--intro-ms) / 2) ease-in calc(var(--intro-ms) / 2);
 }
 .frame.desk .bg-wide { opacity: 0; }
+/* Backdrop crossfade layer (tier desks, the fired box) */
+.bg-alt { opacity: 0; transition: opacity 700ms ease; }
+.frame.desk .bg-alt.show { opacity: 1; }
 
 /* ---------- Monitor screens ---------- */
 
@@ -527,7 +530,80 @@ button:focus-visible { outline: 0.5cqw solid var(--lilac); outline-offset: 0.3cq
 
 .fine { font-size: 2.8cqw; color: rgba(250, 249, 245, 0.45); margin-top: 3cqw; text-align: center; }
 
+/* ---------- Juice ---------- */
+
+/* Cards slide in and fade out */
+.card { animation: cardin 280ms cubic-bezier(.2, .9, .3, 1.15); }
+@keyframes cardin { from { opacity: 0; transform: translateY(4cqw) scale(0.97); } }
+.card-layer.leaving { animation: fadeout 180ms ease forwards; pointer-events: none; }
+@keyframes fadeout { to { opacity: 0; } }
+
+/* Big headlines land like a stamp; "You're fired." shudders after */
+.card .stamp { animation: stamp 460ms cubic-bezier(.2, 1.5, .4, 1) both; }
+.card .fired.stamp { animation: stamp 460ms cubic-bezier(.2, 1.5, .4, 1) both, shudder 320ms ease 460ms; }
+@keyframes stamp { 0% { opacity: 0; transform: scale(1.7); } 55% { opacity: 1; } 100% { transform: scale(1); } }
+@keyframes shudder { 20%, 60% { transform: translateX(-1.2cqw); } 40%, 80% { transform: translateX(1.2cqw); } }
+
+/* Fills tint the position line */
+.pos.fill-up { animation: fillup 380ms ease-out; }
+.pos.fill-down { animation: filldown 380ms ease-out; }
+.pos.fill-flat { animation: fillflat 380ms ease-out; }
+@keyframes fillup { from { background: rgba(47, 191, 113, 0.45); } }
+@keyframes filldown { from { background: rgba(229, 72, 77, 0.45); } }
+@keyframes fillflat { from { background: rgba(250, 249, 245, 0.3); } }
+
+/* Realized P&L floats up from the position line */
+.pnl-pop {
+  position: absolute;
+  left: 50%;
+  z-index: 4;
+  font-size: 4.4cqw;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  pointer-events: none;
+  text-shadow: 0 0.3cqw 1.2cqw rgba(0, 0, 0, 0.7);
+  animation: pnlpop 1250ms ease-out forwards;
+}
+@keyframes pnlpop {
+  0% { opacity: 0; transform: translate(-50%, 0) scale(0.8); }
+  15% { opacity: 1; transform: translate(-50%, -2cqw) scale(1.12); }
+  100% { opacity: 0; transform: translate(-50%, -10cqw) scale(1); }
+}
+
+/* Monitor flash: bell, fired, pass */
+.screen::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  z-index: 7;
+  opacity: 0;
+}
+.screen.flashing::after { animation: screenflash 600ms ease-out; }
+.screen[data-flash="bell"]::after { background: rgba(250, 249, 245, 0.55); }
+.screen[data-flash="fired"]::after { background: rgba(229, 72, 77, 0.6); }
+.screen[data-flash="pass"]::after { background: rgba(47, 191, 113, 0.5); }
+@keyframes screenflash { 0% { opacity: 1; } 100% { opacity: 0; } }
+
+/* Desk monitor edge pulses while a rule meter is in the red */
+.screen-bottom.danger { animation: danger 1s ease-in-out infinite; }
+@keyframes danger { 50% { box-shadow: 0 0 3cqw rgba(229, 72, 77, 0.55), inset 0 0 2.4cqw rgba(229, 72, 77, 0.5); } }
+
+/* Target meter fills */
+.meter.target.pop { animation: tgtpop 700ms cubic-bezier(.2, 1.6, .4, 1); }
+@keyframes tgtpop { 30% { transform: scale(1.12); } }
+
+/* Link back to the studio hub */
+.hub { display: block; margin-top: 3cqw; text-align: center; font-size: 2.9cqw; color: var(--lilac); text-decoration: none; }
+.hub:hover, .hub:focus-visible { text-decoration: underline; }
+
 @media (prefers-reduced-motion: reduce) {
   .frame.intro .bg-wide { transition-duration: 1ms; }
   .screen.shake, .news-banner, .clock.pulse, .bell.hot, .coach-focus { animation: none; }
+  .card, .card .stamp, .card .fired.stamp, .card-layer.leaving, .meter.target.pop,
+  .pos.fill-up, .pos.fill-down, .pos.fill-flat, .screen.flashing::after { animation: none; }
+  .screen-bottom.danger { animation: none; box-shadow: inset 0 0 2.4cqw rgba(229, 72, 77, 0.5); }
+  .bg-alt { transition: none; }
 }
