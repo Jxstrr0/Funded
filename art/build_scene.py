@@ -1508,7 +1508,7 @@ def tod_env():
                                                    glass_cols=("#1a2340", "#56507e"), haze_start=40.0, haze_len=300.0)
         if TOD == "am":
             return AM_SKY, "#7d93b6", 0.3, dict(lit_base=0.9, haze_col="#cfd9e6", tones=("#2b3c58", "#4a5d80"),
-                                                glass_cols=("#25344f", "#55698c"), haze_start=25.0, haze_len=170.0)
+                                                glass_cols=("#25344f", "#55698c"), haze_start=30.0, haze_len=210.0)
         return DAY3_SKY, "#6f88ad", 0.3, dict(lit_base=0.84, haze_col="#bccbdf", tones=("#26385a", "#435a80"),
                                               glass_cols=("#1e2e4a", "#4a6590"), haze_start=45.0, haze_len=260.0)
     if TOD == "am":

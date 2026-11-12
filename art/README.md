@@ -5,7 +5,7 @@
 ## Run
 
 ```
-blender -b --factory-startup -P art/build_scene.py -- [--out DIR] [--samples N] [--preview] [--cams main,wide] [--variant NAME]
+blender -b --factory-startup -P art/build_scene.py -- [--out DIR] [--samples N] [--preview] [--cams main,wide] [--variant NAME] [--tod am|mid|pm]
 ```
 
 - `--out DIR`: output folder (default `art/out`). Writes `desk.png` (CAM_main) and `wide.png` (CAM_wide).
@@ -18,8 +18,12 @@ blender -b --factory-startup -P art/build_scene.py -- [--out DIR] [--samples N] 
   - `fired` -> `desk-fired.png`: the tier1 desk cleared out, with a cardboard box of belongings (folders, a mug, a plant, a photo) in the foreground and colder, dimmer light.
 
   Convert them like the others: `ffmpeg -y -i art/out/desk-tier2.png -q:v 3 assets/desk-tier2.jpg` (and the same for `tier3` and `fired`).
+- `--tod am|mid|pm`: time of day for `tier1`, `tier2` and `tier3` (not `fired`), so the game can crossfade the desk from the opening bell to the close. `mid` is the default and writes the plain names; `am` and `pm` render CAM_main only and add `-am` / `-pm` (`desk-am.png`, `desk-tier2-pm.png`, `desk-tier3-am.png` ...). Only lights, the sky, the window glass and the city's materials change (`tod_env()` and `apply_tod()`); geometry, cameras, the hero screens and the exposure stay as they are.
+  - `am` (about 9:30): cool, soft morning. Dimmer ceiling panels and key, a brighter pale blue-white window fill, a pale sky, more haze and fewer lit windows in the city, the desk lamp low.
+  - `mid`: tier1 and tier2 are the original look. tier3 `mid` is a clear daytime sky with a high soft sun.
+  - `pm` (about 16:00): warm late afternoon. Golden ceiling, key and rim light, a low warm sun through the window wall, a warm orange-pink sky, more lit windows and a stronger desk lamp. tier3 `pm` is the original dusk.
 
-Needs Blender 4.2 LTS. It renders with Cycles on the CPU (EEVEE needs a GPU). A full render at 192 samples takes about 9 minutes for CAM_main and 12 for CAM_wide on 4 cores (tier1 both: about 22 minutes; tier2 8, tier3 3, fired 9).
+Needs Blender 4.2 LTS. It renders with Cycles on the CPU (EEVEE needs a GPU). A full render at 192 samples takes about 9 minutes for CAM_main and 12 for CAM_wide on 4 cores (tier1 both: about 22 minutes; tier2 8, tier3 3, fired 9). The `am` / `pm` renders take about as long as their `mid` desk (two at once on 4 cores roughly doubles each). A `--preview` takes under a minute.
 
 The script prints the measured screen rectangles for both cameras and checks them against the contract below, then ray-casts each hero screen to check that nothing hides it. For a variant it also projects every added object and checks that nothing in front of the screens lands inside their rectangles; for `fired`, every part of the box must sit below the bottom screen (lower than 78.4% of the frame).
 
