@@ -9,7 +9,7 @@ blender -b --factory-startup -P art/build_scene.py -- [--out DIR] [--samples N] 
 ```
 
 - `--out DIR`: output folder (default `art/out`). Writes `desk.png` (CAM_main) and `wide.png` (CAM_wide).
-- `--samples N`: Cycles samples (default 96; 16 with `--preview`). The OpenImageDenoise denoiser is always on.
+- `--samples N`: Cycles samples (default 192; 16 with `--preview`). The OpenImageDenoise denoiser is always on.
 - `--preview`: half resolution (540x960) for quick checks.
 - `--cams`: render only some cameras, e.g. `--cams wide`.
 - `--variant NAME`: which career desk to build for the gameplay view. `tier1` (default) is the original scene and writes `desk.png` and `wide.png`. The others render only CAM_main by default and add the variant to the file name:
@@ -19,7 +19,7 @@ blender -b --factory-startup -P art/build_scene.py -- [--out DIR] [--samples N] 
 
   Convert them like the others: `ffmpeg -y -i art/out/desk-tier2.png -q:v 3 assets/desk-tier2.jpg` (and the same for `tier3` and `fired`).
 
-Needs Blender 4.2 LTS. It renders with Cycles on the CPU (EEVEE needs a GPU). A full render takes about 5 to 9 minutes per camera on 4 cores.
+Needs Blender 4.2 LTS. It renders with Cycles on the CPU (EEVEE needs a GPU). A full render at 192 samples takes about TIMING on 4 cores.
 
 The script prints the measured screen rectangles for both cameras and checks them against the contract below, then ray-casts each hero screen to check that nothing hides it. For a variant it also projects every added object and checks that nothing in front of the screens lands inside their rectangles; for `fired`, every part of the box must sit below the bottom screen (lower than 78.4% of the frame).
 
@@ -42,6 +42,19 @@ Expected rectangles (% of frame, left / right / top / bottom, measured from the 
 | CAM_wide | 33.0 / 59.4 / 46.2 / 54.9 | 33.2 / 59.3 / 56.4 / 65.0 |
 
 Also keep the hero monitors unobstructed in CAM_wide (the intro zooms into them). The hero chair is shown only in the wide shot; in the gameplay view the player is sitting in it.
+
+## What's in the hero desk
+
+All built in `build_hero_desk()` and shared by every variant:
+
+- Monitors (`monitor()`): thin 8 mm bezels with a chamfered front frame, a 16 mm logo-free chin, a tapered back shell and a VESA boss. A tiny green power LED sits on the bottom monitor's chin. The background and wing monitors use the same cached meshes.
+- Stand (`build_monitor_stand()`): a clamp on the back edge of the desk, a round pole with a cable, and two silver gas-spring arms. The top arm leaves its collar at eye level, so it shows in the gap between the screens.
+- Keyboard (`build_keyboard()`): a wedge case and individually bevelled keycaps on a staggered tenkeyless layout (lilac Esc and Enter, lighter modifiers), with a faint lilac backlight between the keys. Mouse (`build_mouse()`) with a rounded shell and scroll wheel, on a navy felt desk mat with a stitched edge.
+- Desk: a pale oak laminate (`make_wood()`, grain, pores and roughness variation) with a dark edge band; tier2 swaps in walnut and tier3 dark engineered stone (`make_stone()`).
+- Partitions: woven fabric (bump and tone) with rounded satin-aluminium caps, posts and kick plates (`make_alu()`).
+- Light: ceiling panels and window fill, a soft key area light over the sitter's left shoulder, a cool rim light from behind the partition, and the warm desk lamp.
+
+Bevelled boxes are smooth-shaded with hard edges kept by angle (`smooth_bm()`), so every bevel catches a highlight.
 
 ## Free to change
 
