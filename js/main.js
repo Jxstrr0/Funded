@@ -1,13 +1,15 @@
 // Boot, intro, and the game state machine.
-import { TIER1, SESSION } from './config.js';
-import { generateDay, candlesUpTo, hashSeed } from './engine.js';
-import { newRun, newDay, applyFill, orderDelta, snapshot, closeDay, RULE_TEXT } from './rules.js';
+import { TIER1, SESSION, PERKS, TUTORIAL } from './config.js';
+import { generateDay, candlesUpTo, hashSeed, bookAt } from './engine.js';
+import { newRun, newDay, applyFill, orderDelta, snapshot, closeDay, RULE_TEXT, effectiveRules, applyMulligan } from './rules.js';
+import { loadMeta, saveMeta, reputationFor, buyPerk, canBuy } from './meta.js';
+import { createTutorial } from './tutorial.js';
 import { Chart } from './chart.js';
 import * as ui from './ui.js';
 import { unlockAudio, sfx } from './audio.js';
 import { loadRun, saveRun, clearRun } from './save.js';
 
-const RULES = TIER1;
+let RULES = TIER1; // tier rules with the run's perks applied
 const N_TICKS = SESSION.candles * SESSION.ticksPerCandle;
 const DAY_MS = SESSION.realSeconds * 1000;
 const TICK_MS = DAY_MS / N_TICKS;
@@ -25,7 +27,14 @@ const S = {
   revealed: new Set(),
   lastWarnSec: null,
   dirty: true,
+  tutorial: null,     // tutorial controller while the guided day runs
+  hold: false,        // tutorial: clock frozen
+  allow: null,        // tutorial: allowed actions, null = all
+  wired: new Set(),   // Newswire: headlines already announced early
 };
+
+let meta = loadMeta();
+const has = (perk) => !S.tutorial && S.run?.perks?.includes(perk);
 
 let chart;
 
@@ -33,11 +42,14 @@ let chart;
 
 const price = () => S.market.ticks[Math.max(0, S.day.tick)];
 const minuteNow = () => SESSION.marketOpenMinute + (S.elapsed / DAY_MS) * SESSION.marketMinutes;
+const dayLabel = () => (S.tutorial ? 'Training' : `Day ${S.run.day} of ${RULES.evalDays}`);
+const allowed = (kind) => !S.allow || S.allow.includes(kind);
 const newsTimes = () => S.market.news.map((n) => ui.clockText(SESSION.marketOpenMinute + n.candle * SESSION.candleMinutes)).join(' · ');
 
 function render() {
   const last = price();
-  ui.renderMarket({ ticker: S.market.ticker, last, open: S.market.open, minute: minuteNow(), day: S.run.day, evalDays: RULES.evalDays });
+  ui.renderMarket({ ticker: S.market.ticker, last, open: S.market.open, minute: minuteNow(), dayLabel: dayLabel() });
+  ui.renderL2(has('level2') && S.day.tick >= 0 ? bookAt(S.market, S.day.tick) : null);
   const snap = snapshot(S.run, S.day, last, RULES);
   ui.renderDesk(snap, S.day, S.sizeIndex);
   chart.draw({
@@ -57,7 +69,7 @@ function render() {
 // the same day at the same moment (paused, chart covered).
 let lastSave = 0;
 function persist(force = false) {
-  if (!S.run) return;
+  if (!S.run || S.tutorial) return;
   const now = performance.now();
   if (!force && now - lastSave < 250) return;
   lastSave = now;
@@ -67,12 +79,14 @@ function persist(force = false) {
 
 function resumeSaved(data) {
   S.run = data.run;
+  RULES = effectiveRules(S.run.perks || []);
   S.sizeIndex = data.sizeIndex ?? RULES.defaultSizeIndex;
   if (!data.live) { openDay(); return; }
   S.day = data.live.day;
   S.market = generateDay({ seed: hashSeed(S.run.seed, S.run.day), dayStartBalance: S.day.startBalance, rules: RULES });
   S.elapsed = data.live.elapsed;
   S.revealed = new Set(data.live.revealed);
+  S.wired = new Set(data.live.revealed);
   S.lastWarnSec = null;
   ui.hideCard();
   ui.hideNews();
@@ -86,18 +100,21 @@ function resumeSaved(data) {
 // ---------- orders ----------
 
 function trade(side) {
-  if (S.phase !== 'running') return;
+  if (S.phase !== 'running' || !allowed(side > 0 ? 'buy' : 'sell')) return;
+  if (S.day.locked) { sfx.denied(); ui.flashDenied('DESK LOCKED'); return; }
   const p = price();
   const delta = orderDelta(S.day, side, RULES.sizes[S.sizeIndex].share, p);
   if (delta === 0) { sfx.denied(); ui.flashDenied('MAX SIZE'); setTimeout(() => (S.dirty = true), 500); return; }
   fill(delta, p);
   side > 0 ? sfx.buy() : sfx.sell();
+  S.tutorial?.onTrade(side > 0 ? 'buy' : 'sell');
 }
 
 function flatten() {
-  if (S.phase !== 'running' || S.day.qty === 0) return;
+  if (S.phase !== 'running' || S.day.qty === 0 || !allowed('flat')) return;
   fill(-S.day.qty, price());
   sfx.flat();
+  S.tutorial?.onTrade('flat');
 }
 
 function fill(delta, p) {
@@ -120,15 +137,48 @@ function processTick(i) {
     ui.showNews(ev);
     ui.shake();
     sfx.news();
+    S.tutorial?.onNews();
   }
+  if (S.tutorial || S.day.locked) return true; // no firing in training or on a locked desk
   const snap = snapshot(S.run, S.day, S.market.ticks[i], RULES);
-  if (snap.breach) { fire(snap.breach); return false; }
+  if (snap.breach) return breach(snap.breach);
   return true;
+}
+
+/** A rule broke. Mulligan forgives it once per eval; otherwise you're fired. Returns true if play continues. */
+function breach(rule) {
+  if (S.run.mulligans > 0) { useMulligan(rule); return true; }
+  fire(rule);
+  return false;
+}
+
+function useMulligan(rule) {
+  if (S.day.qty) {
+    const r = applyFill(S.day.qty, S.day.avg, -S.day.qty, price());
+    S.day.qty = r.qty; S.day.avg = r.avg; S.day.realized += r.realized;
+  }
+  S.run = applyMulligan(S.run, S.day.startBalance + S.day.realized, RULES);
+  S.day.locked = true;
+  ui.setTradingEnabled(false);
+  ui.shake();
+  sfx.fired();
+  ui.showNotice(`MULLIGAN USED · ${RULE_TEXT[rule].name}. Desk locked for today.`);
+  S.dirty = true;
+  persist(true);
+}
+
+// Tutorial: jump the session clock forward, processing ticks without rules.
+function seekTo(ms) {
+  S.elapsed = Math.max(S.elapsed, Math.min(DAY_MS - 1, ms));
+  const target = Math.min(N_TICKS - 1, Math.floor(S.elapsed / TICK_MS));
+  for (let i = S.day.tick + 1; i <= target; i++) processTick(i);
+  S.dirty = true;
+  render();
 }
 
 function frame(now) {
   requestAnimationFrame(frame);
-  if (S.phase !== 'running') { S.prevNow = null; return; }
+  if (S.phase !== 'running' || S.hold) { S.prevNow = null; return; }
   if (S.prevNow == null) S.prevNow = now;
   const dt = Math.min(now - S.prevNow, SESSION.maxFrameMs) * SPEED;
   S.prevNow = now;
@@ -140,6 +190,19 @@ function frame(now) {
     S.dirty = true;
   }
 
+  // Newswire: headline and direction a few seconds early.
+  if (has('newswire')) {
+    const lead = PERKS.find((p) => p.id === 'newswire').leadSeconds * 1000;
+    for (const ev of S.market.news) {
+      const until = ev.tick * TICK_MS - S.elapsed;
+      if (until > 0 && until <= lead && !S.wired.has(ev.tick)) {
+        S.wired.add(ev.tick);
+        ui.showNews(ev, { early: Math.ceil(until / 1000) });
+        sfx.news();
+      }
+    }
+  }
+
   // Bell countdown.
   const left = Math.ceil((DAY_MS - S.elapsed) / 1000);
   if (left <= SESSION.bellWarningSeconds && left > 0) {
@@ -148,7 +211,7 @@ function frame(now) {
   }
 
   if (S.dirty) { render(); persist(); }
-  else ui.renderMarket({ ticker: S.market.ticker, last: price(), open: S.market.open, minute: minuteNow(), day: S.run.day, evalDays: RULES.evalDays });
+  else ui.renderMarket({ ticker: S.market.ticker, last: price(), open: S.market.open, minute: minuteNow(), dayLabel: dayLabel() });
 
   if (S.elapsed >= DAY_MS) closingBell();
 }
@@ -169,7 +232,7 @@ function resume() {
   S.phase = 'running';
   S.prevNow = null;
   ui.setPaused(false);
-  ui.setTradingEnabled(true);
+  ui.setTradingEnabled(!S.day.locked);
 }
 
 document.addEventListener('visibilitychange', () => { if (document.hidden) pause(); });
@@ -179,7 +242,9 @@ window.addEventListener('pagehide', pause);
 
 function startRun() {
   clearRun();
-  S.run = newRun(RULES);
+  endTutorial();
+  RULES = effectiveRules(meta.owned);
+  S.run = newRun(RULES, undefined, meta.owned);
   openDay();
 }
 
@@ -188,6 +253,7 @@ function openDay() {
   S.market = generateDay({ seed: hashSeed(S.run.seed, S.run.day), dayStartBalance: S.day.startBalance, rules: RULES });
   S.elapsed = 0;
   S.revealed = new Set();
+  S.wired = new Set();
   S.lastWarnSec = null;
   S.phase = 'dayopen';
   ui.hideNews();
@@ -210,6 +276,7 @@ function openDay() {
       ['Drawdown floor', ui.money(r.floor)],
       ['Target balance', ui.money(RULES.startBalance + RULES.profitTarget)],
       ['Trading days counted', counted],
+      ...(r.perks.length ? [['Perks', r.perks.map((id) => PERKS.find((p) => p.id === id).name).join(', ') + (r.perks.includes('mulligan') ? ` (${r.mulligans} mulligan left)` : '')]] : []),
     ])}
     <button class="cta" data-action="go">Open the market</button>
     <div class="fine">Be flat by the 16:00 bell or you're fired.</div>
@@ -233,7 +300,8 @@ function closingBell() {
   ui.setBell(null);
   ui.setTradingEnabled(false);
   sfx.bell();
-  if (S.day.qty !== 0) { fire('flatAtBell'); return; }
+  if (S.tutorial) return finishTutorial(S.day.qty !== 0);
+  if (S.day.qty !== 0 && !breach('flatAtBell')) return;
 
   const { run, outcome, result } = closeDay(S.run, S.day, RULES);
   const prevFloor = S.run.floor;
@@ -270,6 +338,7 @@ function fire(rule) {
   render();
   const t = RULE_TEXT[rule];
   const snap = snapshot(S.run, S.day, price(), RULES);
+  const rep = award(false);
   ui.showCard(`
     <div class="eyebrow">Day ${S.run.day} · ${ui.clockText(minuteNow())}</div>
     <h1 class="fired">You're fired.</h1>
@@ -279,14 +348,17 @@ function fire(rule) {
       ['Equity at the time', ui.money(snap.equity)],
       ['Day P&L', ui.signed(snap.dayPnl).text, ui.signed(snap.dayPnl).cls],
       ['Days survived', String(S.run.day - 1)],
+      ...repRows(rep),
     ])}
     <button class="cta" data-action="again">New eval</button>
-  `, { again: startRun });
+    <button class="cta ghost" data-action="shop">Perk shop</button>
+  `, { again: startRun, shop: () => shop(startRun) });
 }
 
 function evalOver(rule) {
   sfx.fired();
   const t = RULE_TEXT[rule];
+  const rep = award(false);
   ui.showCard(`
     <div class="eyebrow">Eval over</div>
     <h1 class="fired">Not funded.</h1>
@@ -296,14 +368,17 @@ function evalOver(rule) {
       ['Final balance', ui.money(S.run.balance)],
       ['Total P&L', ui.signed(S.run.balance - RULES.startBalance).text, ui.signed(S.run.balance - RULES.startBalance).cls],
       ['Trading days counted', `${S.run.daysCounted} of ${RULES.minTradingDays}`],
+      ...repRows(rep),
     ])}
     <button class="cta" data-action="again">New eval</button>
-  `, { again: startRun });
+    <button class="cta ghost" data-action="shop">Perk shop</button>
+  `, { again: startRun, shop: () => shop(startRun) });
 }
 
 function passed() {
   sfx.pass();
   const r = S.run;
+  const rep = award(true);
   ui.showCard(`
     <div class="eyebrow">Eval passed</div>
     <h1>Funded<span class="dot">.</span></h1>
@@ -312,10 +387,99 @@ function passed() {
       ['Final balance', ui.money(r.balance)],
       ['Total P&L', ui.signed(r.balance - RULES.startBalance).text, 'up'],
       ['Trading days', String(r.daysCounted)],
+      ...repRows(rep),
     ])}
     <button class="cta" data-action="again">New eval</button>
+    <button class="cta ghost" data-action="shop">Perk shop</button>
     <div class="fine">The career ladder arrives in a later stage.</div>
-  `, { again: startRun });
+  `, { again: startRun, shop: () => shop(startRun) });
+}
+
+// ---------- reputation and perks ----------
+
+function award(passedEval) {
+  const rep = reputationFor(S.run.history, passedEval);
+  meta = { ...meta, rep: meta.rep + rep.total, runs: meta.runs + 1, passes: meta.passes + (passedEval ? 1 : 0) };
+  saveMeta(meta);
+  return rep;
+}
+
+function repRows(rep) {
+  return [
+    ['Reputation earned', `+${rep.total}`, 'up'],
+    ['Reputation banked', String(meta.rep)],
+  ];
+}
+
+function shop(back) {
+  const list = PERKS.map((p) => {
+    const owned = meta.owned.includes(p.id);
+    const label = owned ? 'Owned' : `${p.cost} Rep`;
+    return `<div class="perk"><h3>${ui.esc(p.name)}</h3><p>${ui.esc(p.desc)}</p>
+      <button class="buy" data-action="buy_${p.id}" ${owned || !canBuy(meta, p.id) ? 'disabled' : ''}>${label}</button></div>`;
+  }).join('');
+  const actions = { back };
+  for (const p of PERKS) actions['buy_' + p.id] = () => { meta = buyPerk(meta, p.id); saveMeta(meta); sfx.pass(); shop(back); };
+  ui.showCard(`
+    <div class="eyebrow">Perk shop</div>
+    <h2>You have <span class="rep">${meta.rep} Rep</span></h2>
+    <p style="font-size:3.2cqw">Perks are permanent and apply from your next new eval. Earn Rep every run, even when you're fired.</p>
+    ${list}
+    <button class="cta" data-action="back" style="margin-top:4cqw">Done</button>
+  `, actions);
+}
+
+// ---------- tutorial ----------
+
+function startTutorial() {
+  RULES = TIER1;
+  S.run = newRun(TIER1, TUTORIAL.seed, []);
+  S.day = newDay(S.run, TIER1);
+  S.market = generateDay({ seed: TUTORIAL.seed, script: TUTORIAL.script });
+  S.elapsed = 0;
+  S.revealed = new Set();
+  S.wired = new Set();
+  S.lastWarnSec = null;
+  S.sizeIndex = 0;
+  S.tutorial = createTutorial({
+    hold: (h) => { S.hold = h; },
+    allow: (list) => { S.allow = list; },
+    seekCandle: (c) => seekTo(c * SESSION.ticksPerCandle * TICK_MS),
+    seekBellWindow: () => seekTo(DAY_MS - SESSION.bellWarningSeconds * 1000 - 400),
+    coach: (target, html, onNext) => ui.showCoach(target, html, onNext),
+    hideCoach: () => ui.hideCoach(),
+  });
+  ui.hideCard();
+  ui.hideNews();
+  ui.setBell(null);
+  ui.setPaused(false);
+  S.day.tick = -1;
+  processTick(0);
+  S.phase = 'running';
+  S.prevNow = null;
+  ui.setTradingEnabled(true);
+  render();
+  S.tutorial.start();
+}
+
+function endTutorial() {
+  S.tutorial?.stop();
+  S.tutorial = null;
+  S.hold = false;
+  S.allow = null;
+}
+
+function finishTutorial(heldAtBell) {
+  endTutorial();
+  meta = { ...meta, tutorialDone: true };
+  saveMeta(meta);
+  ui.showCard(`
+    <div class="eyebrow">Training done</div>
+    <h2>${heldAtBell ? 'That would be a firing.' : 'Flat at the bell. Good.'}</h2>
+    <p>${heldAtBell ? 'You held through the bell. In a real eval that ends your run on the spot.' : 'That\'s the job: trade the day, respect the rules, be flat by 16:00.'}</p>
+    <p>Now the real thing: five days, +$1,500 target, no second chances.</p>
+    <button class="cta" data-action="go">Start your eval</button>
+  `, { go: startRun });
 }
 
 // ---------- boot ----------
@@ -330,18 +494,27 @@ function loadImage(src) {
 
 function title() {
   S.phase = 'title';
+  endTutorial();
   const saved = loadRun();
+  const fresh = !meta.tutorialDone;
   ui.showCard(`
     <div class="eyebrow">Longlight Interactive</div>
     <h1>Funded<span class="dot">.</span></h1>
     <p>The firm gives you $25,000 and five days. Make <b>+$1,500</b>.
       Lose <b>$750</b> in a day, touch the drawdown floor, or hold through the bell, and you're out.</p>
     <p style="font-size:3.2cqw">Size buys a share of your buying power. News times are marked on the clock.</p>
-    ${saved ? `<button class="cta" data-action="cont">Continue · Day ${saved.run.day} of ${RULES.evalDays}</button>
+    ${saved ? `<button class="cta" data-action="cont">Continue · Day ${saved.run.day} of ${TIER1.evalDays}</button>
     <button class="cta ghost" data-action="start">New eval</button>`
-    : '<button class="cta" data-action="start">Start eval</button>'}
+    : `<button class="cta" data-action="start">${fresh ? 'Start training day' : 'Start eval'}</button>`}
+    ${fresh ? '' : `<button class="cta ghost" data-action="shop">Perk shop · <span class="rep">${meta.rep} Rep</span></button>
+    <button class="cta ghost" data-action="tut">Replay tutorial</button>`}
     <div class="fine">Desktop: B buy · S sell · F flatten · 1–3 size · P pause</div>
-  `, { start: () => intro(startRun), cont: () => intro(() => resumeSaved(saved)) }, { cls: 'title-card', clear: true });
+  `, {
+    start: () => intro(fresh ? startTutorial : startRun),
+    cont: () => intro(() => resumeSaved(saved)),
+    shop: () => shop(title),
+    tut: () => intro(startTutorial),
+  }, { cls: 'title-card', clear: true });
 }
 
 function intro(next) {
@@ -350,6 +523,7 @@ function intro(next) {
   S.phase = 'intro';
   const ms = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--intro-ms')) || 1200;
   const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
+  if (document.getElementById('frame').classList.contains('desk')) { next(); return; }
   ui.setFrameMode('intro');
   setTimeout(() => {
     ui.setFrameMode('desk', 'ui');

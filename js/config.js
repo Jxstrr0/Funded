@@ -84,3 +84,31 @@ export const HEADLINES = {
     'CFO sells large stake',
   ],
 };
+
+// Permanent perks, bought with Reputation. Each is a one-time buy and applies from the next eval.
+export const PERKS = [
+  { id: 'thickSkin', name: 'Thick Skin', cost: 60, desc: '+10% daily loss buffer.', lossBuffer: 0.10 },
+  { id: 'newswire', name: 'Newswire', cost: 80, desc: 'Headlines arrive 5 seconds early.', leadSeconds: 5 },
+  { id: 'level2', name: 'Level 2', cost: 120, desc: 'See the order book: bid and ask pressure.' },
+  { id: 'mulligan', name: 'Mulligan', cost: 150, desc: 'Survive one rule break per eval. You are flattened and the desk locks for the day.', uses: 1, floorRoom: 750 },
+];
+
+// Reputation is earned every run, even failed ones.
+export const REPUTATION = {
+  perDaySurvived: 10,  // days fully closed without being fired
+  bestDayDollarsPerRep: 50, // 1 Rep per $50 of the best green day
+  passBonus: 50,
+};
+
+// Guided first day: fixed seed, gentle trend, one scripted news shock.
+export const TUTORIAL = {
+  seed: 20261112,
+  script: {
+    ticker: 'NOVA',
+    open: 48.2,
+    regime: 'trend-up',
+    volScale: 0.55,
+    news: [{ candle: 30, dir: 1, headline: 'Beats earnings, raises guidance', jumpShare: 0.9 }],
+  },
+  startCandle: 6,          // chart is pre-filled to 10:00 when the lesson starts
+};
