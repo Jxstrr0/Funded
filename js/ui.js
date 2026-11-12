@@ -54,16 +54,8 @@ export function initUI(handlers) {
   };
   el.coachNext.addEventListener('click', () => coachNextFn?.());
 
-  // Size selector.
-  TIER1.sizes.forEach((s, i) => {
-    const b = document.createElement('button');
-    b.textContent = s.label;
-    b.setAttribute('role', 'radio');
-    b.dataset.i = i;
-    b.addEventListener('pointerdown', (e) => { e.preventDefault(); handlers.onSize(i); });
-    b.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') handlers.onSize(i); });
-    el.sizes.appendChild(b);
-  });
+  onSize = handlers.onSize;
+  setSizes(TIER1.sizes);
 
   // Orders fill on pointerdown. Keyboard still works via Enter/Space.
   const bind = (btn, fn) => {
@@ -94,6 +86,23 @@ export function initUI(handlers) {
     else if (k >= '1' && k <= '3') handlers.onSize(Number(k) - 1);
     else if (k === 'p' || k === ' ') { e.preventDefault(); handlers.onTogglePause(); }
     else if (k === 'm') handlers.onAudio?.();
+  });
+}
+
+let onSize = () => {};
+
+/** Rebuild the size selector for a tier (shares of buying power, or contracts). */
+export function setSizes(sizes) {
+  el.sizes.textContent = '';
+  sizes.forEach((s, i) => {
+    const b = document.createElement('button');
+    b.textContent = s.label;
+    b.setAttribute('role', 'radio');
+    b.setAttribute('aria-label', s.contracts ? `${s.contracts} contract${s.contracts > 1 ? 's' : ''}` : s.label === 'MAX' ? 'Max size' : `${s.label} of buying power`);
+    b.dataset.i = i;
+    b.addEventListener('pointerdown', (e) => { e.preventDefault(); onSize(i); });
+    b.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') onSize(i); });
+    el.sizes.appendChild(b);
   });
 }
 
@@ -211,7 +220,7 @@ export function renderDesk(snap, day, sizeIndex) {
     const side = day.qty > 0 ? 'LONG' : 'SHORT';
     const o = signed(snap.open);
     el.pos.innerHTML =
-      `<span class="side">${side} ${Math.abs(day.qty).toLocaleString('en-US')}</span>` +
+      `<span class="side">${side} ${Math.abs(day.qty).toLocaleString('en-US')}${day.maxContracts ? ' ct' : ''}</span>` +
       `<span class="muted">@ ${day.avg.toFixed(2)}</span>` +
       `<span class="${o.cls}">${o.text}</span>`;
   }

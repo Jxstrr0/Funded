@@ -45,3 +45,28 @@ test('partial candle derives from ticks so far', () => {
   assert.equal(cs[1].c, d.ticks[30]);
   assert.equal(cs[1].o, d.ticks[23]);
 });
+
+test('futures: fixed contract, prices on the tick grid, jump capped in dollars', async () => {
+  const { TIER2 } = await import('../js/config.js');
+  const c = TIER2.contract;
+  const perPoint = TIER2.maxContracts * c.pointValue;
+  for (let s = 0; s < 200; s++) {
+    const d = generateDay({ seed: hashSeed('fut', s), dayStartBalance: TIER2.startBalance, rules: TIER2 });
+    assert.equal(d.ticker, c.symbol);
+    assert.ok(d.open >= c.priceMin && d.open <= c.priceMax);
+    for (let i = 0; i < d.ticks.length; i += 37) assert.ok(Math.abs(d.ticks[i] / c.tickSize - Math.round(d.ticks[i] / c.tickSize)) < 1e-9);
+    for (const ev of d.news) {
+      const before = ev.tick === 0 ? d.open : d.ticks[ev.tick - 1];
+      const loss = Math.abs(d.ticks[ev.tick] - before) * perPoint;
+      // rounding to the tick grid can add up to one tick per contract
+      assert.ok(loss <= 0.6 * TIER2.dailyLossLimit + c.tickValue * TIER2.maxContracts, `loss ${loss}`);
+    }
+  }
+});
+
+test('stock days are unchanged by the futures support', () => {
+  const d = generateDay({ seed: 42 });
+  assert.ok(TICKERS_OK(d.ticker));
+  assert.ok(Array.from(d.ticks).every((p) => Math.abs(p * 100 - Math.round(p * 100)) < 1e-6));
+});
+const TICKERS_OK = (t) => /^[A-Z]{4}$/.test(t);

@@ -13,6 +13,8 @@ Play: https://funded.longlight.games (GitHub Pages, `main` branch root)
 - **Five-day eval** plays day to day in memory, with minimum days, early pass, and pass screen.
 - **Stage 3: saving.** Done. Reload resumes the day in progress, paused.
 - **Stage 4: Reputation, perks, guided first day.** Done.
+- **Stage 5: futures tier.** Done. Pass Tier 1 to move up to the $50k futures desk.
+- **Sound:** ElevenLabs effects, ambience and menu music. Toggle on the title screen or with M.
 
 ## Tuning
 

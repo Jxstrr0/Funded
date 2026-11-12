@@ -46,7 +46,10 @@ export class Chart {
 
     const fs = Math.max(8, Math.round(w * 0.03));
     const axisH = fs + 4;
-    const labelW = fs * 3.6;
+    ctx.font = `600 ${fs}px 'Space Grotesk', system-ui, sans-serif`;
+    // Price gutter fits the widest label (4-digit futures prices need more room).
+    const sample = String(Math.floor(d.last)).replace(/\d/g, '0') + '.00';
+    const labelW = Math.max(fs * 3.6, ctx.measureText(sample).width + 7);
     const plotL = 1;
     const plotR = w - labelW;
     const plotT = 2;
