@@ -277,11 +277,11 @@ Keep game logic (engine, rules) separate from rendering so the numbers can be tu
 
 ## 11. Art pipeline reference
 
-- The 3D scene lives in a hosted Blender project (Higgsfield 3D Jutsu): `https://higgsfield.ai/3d-jutsu/1a631ee2-e3c7-4b27-b9a7-ba50cac3c109`
+- The 3D scene is built by `art/build_scene.py` (local headless Blender, fully procedural); see `art/README.md`. Edge props and card art come from `art/build_props.py` and `art/props.py`.
 - Cameras: `CAM_main` (gameplay view) and `CAM_wide` (intro), both 720×1280 portrait, lined up on the same axis for the zoom.
 - Screen objects: `HERO_screen_top` and `HERO_screen_bottom`. The overlay rectangles in section 5 come from projecting these into `CAM_main`. If the camera moves, re-measure.
 - **For the intro zoom, also project the screen objects into `CAM_wide`.** The scale and `transform-origin` in section 5 are estimates from the blockout PNGs and should be replaced with the projected values.
-- Outstanding art work (not for the code session): city contrast and haze through the glass, lit windows, wide-shot framing, monitor-arm stub, background screen content, time-of-day lighting variants, final high-resolution renders, intro video.
+- Outstanding art: none. Done: city contrast, haze and lit windows (the tier1 room now opens onto the skyline), wide-shot framing, the monitor arm, background screen content, time-of-day variants, final 1080×1920 renders, the rendered intro move (`assets/intro.mp4`), pass desks, rain days, edge props, card art and the desk mouse for the on-screen clicker.
 
 ---
 

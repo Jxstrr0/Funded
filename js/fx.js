@@ -1,7 +1,7 @@
 // Juice: short visual and haptic feedback, and backdrop changes. DOM only,
 // no game logic. Everything here is skipped or toned down for players who
 // ask for reduced motion.
-import { TIME_OF_DAY } from './config.js';
+import { TIME_OF_DAY, EDGE_PROPS, WEATHER } from './config.js';
 
 const $ = (id) => document.getElementById(id);
 const MINUS = '−';
@@ -64,12 +64,16 @@ let token = 0;
 /**
  * Crossfade the gameplay backdrop (the desk changes as the career climbs,
  * and a cardboard box appears when you're fired). A missing file keeps the
- * current backdrop.
+ * current backdrop. `rain` is the tier id on a rain day (moving streaks over
+ * that tier's window glass), otherwise null.
  */
-export function setBackdrop(src, { tod = true } = {}) {
+export function setBackdrop(src, { tod = true, props = true, rain = null } = {}) {
   const desk = $('bgDesk');
   current ??= desk.getAttribute('src');
   if (todFor === null) setTodBase(current);
+  $('props').classList.toggle('off', !props); // the box and the pass desk have their own props
+  $('deskMouse').classList.toggle('off', !(props && tod)); // its crops match the plain desk's light only
+  setRainStreaks(rain);
   if (!src || src === current) return;
   const my = ++token;
   const img = new Image();
@@ -88,6 +92,20 @@ export function setBackdrop(src, { tod = true } = {}) {
     }, reducedMotion() ? 20 : 750);
   };
   img.src = src;
+}
+
+/** Rain running down the window glass (WEATHER.streaks); null stops it. */
+function setRainStreaks(tier) {
+  const box = $('rain');
+  const strips = (tier && WEATHER.streaks[tier]) || null;
+  box.classList.toggle('on', !!strips);
+  if (!strips || box.dataset.tier === tier) return;
+  box.dataset.tier = tier;
+  box.replaceChildren(...strips.map((r) => {
+    const s = document.createElement('span');
+    s.style.cssText = `left:${r.l}%;top:${r.t}%;width:${r.w}%;height:${r.h}%`;
+    return s;
+  }));
 }
 
 // ---------- time of day ----------
@@ -118,4 +136,40 @@ export function setTimeOfDay(share) {
   const pm = Math.max(0, (todShare - t.pmFadeStart) / (1 - t.pmFadeStart)) * t.pmPeak;
   $('bgAm').style.opacity = am.toFixed(3);
   $('bgPm').style.opacity = pm.toFixed(3);
+  for (const n of $('deskMouse').querySelectorAll('[data-tod]')) {
+    n.style.opacity = (n.dataset.tod === 'am' ? am : pm).toFixed(3);
+  }
+}
+
+// ---------- edge props on the desk ----------
+
+/**
+ * Show a prop on the desk for each edge the career holds. `tier` picks the
+ * render set (each desk has its own light); an edge with no layout entry, or
+ * a file that fails to load, is simply left off.
+ */
+export function setDeskProps(tier, edges = []) {
+  const box = $('props');
+  const layout = EDGE_PROPS.layout[tier] || {};
+  const order = Object.keys(layout);
+  const want = edges.filter((id) => layout[id]);
+  const key = tier + ':' + want.join(',');
+  if (box.dataset.key === key) return;
+  box.dataset.key = key;
+  const keep = new Map([...box.children].map((n) => [n.dataset.key, n]));
+  for (const id of want) {
+    const k = tier + ':' + id;
+    if (keep.has(k)) { keep.delete(k); continue; }
+    const r = layout[id];
+    const img = document.createElement('img');
+    img.className = 'prop';
+    img.alt = '';
+    img.dataset.key = k;
+    img.style.cssText = `left:${r.l}%;top:${r.t}%;width:${r.w}%;height:${r.h}%;z-index:${order.indexOf(id) + 1}`;
+    img.onload = () => requestAnimationFrame(() => img.classList.add('in'));
+    img.onerror = () => img.remove();
+    img.src = `${EDGE_PROPS.dir}/${tier}/${id}.webp`;
+    box.appendChild(img);
+  }
+  for (const n of keep.values()) n.remove();
 }

@@ -1,5 +1,5 @@
 // Boot, intro, and the game state machine.
-import { TIER1, TIERS, SESSION, PERKS, TUTORIAL, STUDIO, VERSION, EDGES, MANDATES, REGIME_TEXT } from './config.js';
+import { TIER1, TIERS, SESSION, PERKS, TUTORIAL, STUDIO, VERSION, EDGES, MANDATES, REGIME_TEXT, ENGINE, WEATHER, EDGE_PROPS } from './config.js';
 import * as fx from './fx.js';
 import { generateDay, candlesUpTo, hashSeed, bookAt } from './engine.js';
 import { newRun, newDay, applyFill, orderDelta, optionOrder, snapshot, closeDay, RULE_TEXT, effectiveRules, applyMulligan, openPnl } from './rules.js';
@@ -9,8 +9,9 @@ import { loadMeta, saveMeta, reputationFor, buyPerk, canBuy } from './meta.js';
 import { createTutorial } from './tutorial.js';
 import { Chart } from './chart.js';
 import * as ui from './ui.js';
-import { unlockAudio, sfx, setScene, audioMode, cycleAudioMode } from './audio.js';
+import { unlockAudio, sfx, setScene, setRain, audioMode, cycleAudioMode } from './audio.js';
 import { loadRun, saveRun, clearRun } from './save.js';
+import { initClicker, setDeskMouse } from './clicker.js';
 
 let RULES = TIER1; // tier rules with the run's perks applied
 const N_TICKS = SESSION.candles * SESSION.ticksPerCandle;
@@ -52,7 +53,24 @@ function useRules(rules) {
   ui.setActionLabels(RULES.option ? ['CALL', 'PUT', 'CLOSE'] : ['BUY', 'SELL', RULES.noFlatten ? 'NO FLAT' : 'FLATTEN']);
   S.sizeIndex = Math.min(S.sizeIndex, RULES.sizes.length - 1);
   if (!RULES.option) ui.renderOptions(null);
-  fx.setBackdrop(RULES.backdrop);
+  showDesk();
+}
+
+/** A seeded share of days are grey and rainy (WEATHER). Same career + day, same weather. */
+const rainDay = (run) => !!run && !S.tutorial && !!tierOf(run).rainBackdrop && run.day >= 1
+  && hashSeed(run.seed, run.day, 'weather') / 4294967296 < WEATHER.rainChance;
+
+/** The desk for today (rain or shine), with the career's edge props on it. */
+function showDesk() {
+  const rain = rainDay(S.run) && RULES.rainBackdrop;
+  fx.setBackdrop(rain || RULES.backdrop, { tod: !rain, rain: rain ? S.run.tier || 'tier1' : null });
+  setRain(!!rain);
+  syncProps();
+}
+
+function syncProps() {
+  fx.setDeskProps(S.run && !S.tutorial ? S.run.tier || 'tier1' : null, S.run && !S.tutorial ? S.run.edges || [] : []);
+  setDeskMouse(S.run && !S.tutorial ? S.run.tier || 'tier1' : 'tier1');
 }
 
 /** Today's rules for the run: tier + perks + the career's edges and mandates. */
@@ -124,14 +142,15 @@ function persist(force = false) {
   if (!force && now - lastSave < 250) return;
   lastSave = now;
   const inDay = S.phase === 'running' || S.phase === 'paused';
-  saveRun(S.run, inDay ? { day: S.day, elapsed: S.elapsed, revealed: [...S.revealed] } : null, S.sizeIndex);
+  saveRun(S.run, inDay ? { day: S.day, elapsed: S.elapsed, revealed: [...S.revealed], mv: ENGINE.version } : null, S.sizeIndex);
 }
 
 function resumeSaved(data) {
   S.run = { edges: [], mandates: [], rewinds: 0, draft: null, ...data.run }; // saves from before edges existed
   applyRunRules();
   S.sizeIndex = Math.min(data.sizeIndex ?? RULES.defaultSizeIndex, RULES.sizes.length - 1);
-  if (!data.live) { afterDraft(openDay); return; }
+  // A day saved under older market rules would resume on a different tape: restart it from the open.
+  if (!data.live || data.live.mv !== ENGINE.version) { afterDraft(openDay); return; }
   S.day = data.live.day;
   S.market = generateDay({ seed: hashSeed(S.run.seed, S.run.day), dayStartBalance: S.day.startBalance, rules: RULES });
   S.elapsed = data.live.elapsed;
@@ -436,7 +455,7 @@ function afterDraft(next, { rerolled = false } = {}) {
   const left = rerollsAllowed(S.run.perks) - S.run.draft.rerolls;
   const cards = offer.map((id) => {
     const e = edgeById(id);
-    return `<div class="perk edge${e.weight <= 1 ? ' rare' : ''}"><h3>${ui.esc(e.name)}${e.weight <= 1 ? ' <span class="tag">RARE</span>' : ''}</h3><p>${ui.esc(e.desc)}</p>
+    return `<div class="perk edge${e.weight <= 1 ? ' rare' : ''}"><img class="edge-art" src="${EDGE_PROPS.cards}/${id}.webp" alt=""><h3>${ui.esc(e.name)}${e.weight <= 1 ? ' <span class="tag">RARE</span>' : ''}</h3><p>${ui.esc(e.desc)}</p>
       <button class="buy" data-action="e_${id}">Take</button></div>`;
   }).join('');
   const actions = {
@@ -447,6 +466,7 @@ function afterDraft(next, { rerolled = false } = {}) {
       S.run = takeEdge(S.run, id);
       persist(true);
       sfx.pick();
+      syncProps();
       next();
     };
   }
@@ -503,7 +523,7 @@ function openDay() {
   const r = S.run;
   const counted = `${r.daysCounted} of ${RULES.minTradingDays}`;
   ui.showCard(`
-    <div class="eyebrow">${ui.esc(RULES.name.split(' · ')[0])} · Day ${r.day} of ${RULES.evalDays}</div>
+    <div class="eyebrow">${ui.esc(RULES.name.split(' · ')[0])} · Day ${r.day} of ${RULES.evalDays}${rainDay(r) ? ' · Rain' : ''}</div>
     <h2>${ui.esc(S.market.ticker)} <span style="font-weight:500;color:rgba(250,249,245,.6)">opens $${S.market.open.toFixed(2)}</span></h2>
     ${RULES.blindNews ? `<p>News times hidden (Blind News). ${S.market.news.length} headline${S.market.news.length > 1 ? 's' : ''} today.</p>` : `<p>News at <b>${newsTimes()}</b>. Marked on the clock.</p>`}
     ${RULES.option && r.day === 1 ? `<p>Options: tap <b>CALL</b> if you think it rises, <b>PUT</b> if it falls. You can only lose what you paid. Premium melts as the day runs, gets pumped before earnings, and is crushed the moment they land.</p>` : ''}
@@ -590,7 +610,7 @@ function fire(rule) {
   setScene('menu');
   render();
   fx.danger(false);
-  fx.setBackdrop(STUDIO.firedBackdrop, { tod: false });
+  fx.setBackdrop(STUDIO.firedBackdrop, { tod: false, props: false }); // the edges go in the box
   const t = RULE_TEXT[rule];
   const snap = snapshot(S.run, S.day, mark(), RULES);
   const rep = award(false);
@@ -642,6 +662,7 @@ function passed() {
   fx.buzz([20, 30, 20, 30, 60]);
   const r = S.run;
   const rep = award(true);
+  if (RULES.fundedBackdrop) fx.setBackdrop(RULES.fundedBackdrop, { tod: false, props: false });
   if (RULES.next) return promoted(r, rep);
   ui.showCard(`
     <div class="eyebrow">Eval passed</div>
@@ -816,13 +837,58 @@ function title() {
   }, { cls: 'title-card', clear: true });
 }
 
+// The rendered intro move (STUDIO.introVideo). Loaded at boot; if it isn't
+// ready, fails, or the player asks for reduced motion, the CSS zoom runs instead.
+let introReady = false;
+function prepIntroVideo() {
+  const v = document.getElementById('bgIntro');
+  if (!STUDIO.introVideo || matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+  v.addEventListener('canplaythrough', () => { introReady = true; }, { once: true });
+  v.addEventListener('error', () => { introReady = false; }, { once: true });
+  v.src = STUDIO.introVideo;
+}
+
+function playIntroVideo(next) {
+  const v = document.getElementById('bgIntro');
+  const frame = document.getElementById('frame');
+  let done = false;
+  const finish = () => {
+    if (done) return;
+    done = true;
+    clearTimeout(guard);
+    frame.removeEventListener('pointerdown', finish);
+    ui.setFrameMode('desk', 'ui');
+    // Keep .vid a moment so the desk appears at once instead of with the CSS fade.
+    setTimeout(() => frame.classList.remove('vid'), 200);
+    v.pause();
+    next();
+  };
+  const guard = setTimeout(finish, ((v.duration || 3) + 2) * 1000); // never hang on a stalled clip
+  v.addEventListener('ended', finish, { once: true });
+  frame.addEventListener('pointerdown', finish); // tap to skip
+  v.currentTime = 0;
+  v.play().then(() => frame.classList.add('vid')).catch(() => {
+    if (done) return;
+    done = true;
+    clearTimeout(guard);
+    frame.removeEventListener('pointerdown', finish);
+    cssIntro(next);
+  });
+}
+
 function intro(next) {
   unlockAudio();
   ui.hideCard();
   S.phase = 'intro';
+  if (document.getElementById('frame').classList.contains('desk')) { next(); return; }
+  const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
+  if (introReady && !reduce) { playIntroVideo(next); return; }
+  cssIntro(next);
+}
+
+function cssIntro(next) {
   const ms = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--intro-ms')) || 1200;
   const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
-  if (document.getElementById('frame').classList.contains('desk')) { next(); return; }
   ui.setFrameMode('intro');
   setTimeout(() => {
     ui.setFrameMode('desk', 'ui');
@@ -847,6 +913,10 @@ async function boot() {
     onAudio: () => { cycleAudioMode(); if (S.phase === 'title') title(); },
   });
   chart = new Chart(document.getElementById('chart'));
+  initClicker();
+  // Card art that fails to load is dropped, leaving the plain text card.
+  document.getElementById('card').addEventListener('error', (e) => { if (e.target.tagName === 'IMG') e.target.remove(); }, true);
+  prepIntroVideo();
   await Promise.all([loadImage('assets/wide.jpg'), loadImage('assets/desk.jpg')]);
   requestAnimationFrame(frame);
   title();

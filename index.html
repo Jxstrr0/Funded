@@ -18,10 +18,14 @@
 <body>
   <main class="frame" id="frame">
     <img class="bg bg-wide" id="bgWide" src="assets/wide.jpg" alt="">
+    <video class="bg bg-intro" id="bgIntro" muted playsinline preload="auto" aria-hidden="true"></video>
     <img class="bg bg-desk" id="bgDesk" src="assets/desk.jpg" alt="">
     <img class="bg bg-tod" id="bgAm" alt="">
     <img class="bg bg-tod" id="bgPm" alt="">
     <img class="bg bg-alt" id="bgAlt" alt="">
+    <div class="rain" id="rain" aria-hidden="true"></div>
+    <div class="desk-mouse" id="deskMouse" aria-hidden="true"></div>
+    <div class="props" id="props" aria-hidden="true"></div>
 
     <!-- Top monitor: market -->
     <section class="screen screen-top" id="screenTop" aria-label="Market">
@@ -66,6 +70,9 @@
         <button class="act flat" id="flatBtn">FLATTEN</button>
       </div>
     </section>
+
+    <!-- Touch screens: the pointer that clicks what you tap (js/clicker.js) -->
+    <div class="pointer" id="pointer" aria-hidden="true"></div>
 
     <!-- Tutorial coach bubble -->
     <div class="coach" id="coach" hidden>

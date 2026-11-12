@@ -21,6 +21,8 @@ export const TIER1 = {
   defaultSizeIndex: 0,
   next: 'tier2',               // passing this eval promotes you to this tier
   backdrop: 'assets/desk.jpg', // the desk: back row
+  rainBackdrop: 'assets/desk-rain.jpg',     // rain days (WEATHER)
+  fundedBackdrop: 'assets/desk-funded.jpg', // shown when this eval is passed
 };
 
 // Firm rules for Tier 2 ($50k futures eval). Same shape as Tier 1, scaled to
@@ -56,6 +58,8 @@ export const TIER2 = {
   defaultSizeIndex: 0,
   next: 'tier3',
   backdrop: 'assets/desk-tier2.jpg', // mid-floor, more monitors
+  rainBackdrop: 'assets/desk-tier2-rain.jpg',     // rain days (WEATHER)
+  fundedBackdrop: 'assets/desk-tier2-funded.jpg', // shown when this eval is passed
 };
 
 // Firm rules for Tier 3 ($100k options eval). One stock a day and one strike,
@@ -92,6 +96,8 @@ export const TIER3 = {
   // so these aren't tied to the daily limit like the other tiers). Tuned so a blind
   // guess before earnings loses a little on average once the IV pump is paid for.
   shocks: { earnings: [0.02, 0.035], other: [0.008, 0.018] },
+  // Options keep the original news settings (the stronger news in ENGINE.news is for tiers 1 and 2).
+  news: { min: 1, max: 3, minGapCandles: 9, followMinShareOfJump: 0.35, followMaxShareOfJump: 0.9 },
   sizes: [
     { label: '25%', share: 0.25 },
     { label: '50%', share: 0.5 },
@@ -100,6 +106,8 @@ export const TIER3 = {
   defaultSizeIndex: 0,
   next: null,                  // top of the ladder
   backdrop: 'assets/desk-tier3.jpg', // the window seat
+  rainBackdrop: 'assets/desk-tier3-rain.jpg',     // rain days (WEATHER)
+  fundedBackdrop: 'assets/desk-tier3-funded.jpg', // shown when this eval is passed
 };
 
 export const TIERS = { tier1: TIER1, tier2: TIER2, tier3: TIER3 };
@@ -109,13 +117,109 @@ export const TIERS = { tier1: TIER1, tier2: TIER2, tier3: TIER3 };
 // It shows small on the title screen, and when it changes on main,
 // .github/workflows/publish-release.yml publishes a GitHub Release, which is
 // where longlight.games reads this game's version and "what's new" line.
-export const VERSION = '0.8.0.0';
+export const VERSION = '0.9.0.0';
 
 // Studio links and shared art.
 export const STUDIO = {
   hubUrl: 'https://longlight.games', // "More games" link on the title screen
   hubLabel: 'More games at longlight.games',
   firedBackdrop: 'assets/desk-fired.jpg', // the cardboard box
+  // Rendered camera move from the wide shot onto the desk (art/build_scene.py --dolly).
+  // If it can't play (or reduced motion is on), the CSS zoom in css/style.css is used.
+  introVideo: 'assets/intro.mp4',
+};
+
+// Weather: some days are seeded grey and rainy (the tier's rainBackdrop, and no
+// morning/evening light). It doesn't change the trading.
+export const WEATHER = {
+  rainChance: 0.2, // share of trading days that are rain days
+  // Moving rain streaks drawn over the window glass on rain days, as % of the
+  // frame (left, top, width, height), matched to each tier's rain render. A
+  // tier with no entry (tier2: no window in view) gets none. Strength and
+  // speed are CSS variables at the top of css/style.css.
+  streaks: {
+    tier1: [ // the skyline either side of the top monitor
+      { l: 0, t: 33, w: 10.2, h: 11 },
+      { l: 89.8, t: 33, w: 10.2, h: 11 },
+    ],
+    tier3: [ // the glass wall: above the monitors, and above and below the wing monitors
+      { l: 0, t: 0, w: 100, h: 20.6 },
+      { l: 0, t: 20.6, w: 10.2, h: 15.6 },
+      { l: 89.8, t: 20.6, w: 10.2, h: 15.6 },
+      { l: 0, t: 64.8, w: 10.2, h: 14.2 },
+      { l: 89.8, t: 64.8, w: 10.2, h: 14.2 },
+    ],
+  },
+};
+
+// The trader's hands (js/clicker.js): on touch screens a pointer glides to
+// whatever you tap on the monitors and clicks it, and the mouse on the desk
+// moves with it. Cosmetic only; orders fill on the tap.
+export const CLICKER = {
+  on: true,
+  glideMs: 160,   // pointer travel time for a medium move (longer moves take a bit more)
+  idleMs: 2500,   // the pointer fades out after this long without a tap
+  pointerRest: { x: 78, y: 70 }, // where the pointer starts, % of the frame
+  screens: { l: 12, r: 88, t: 22.5, b: 77.5 }, // the pointer stays on the glass
+  mouseTravel: { x: 0.02, y: 0.015 }, // desk mouse move per unit of pointer move
+  mouse: {
+    dir: 'assets/mouse',
+    // Crop of CAM_main around the desk mouse, % of 1080x1920 (left, top, width,
+    // height), from art/build_props.py --mouse. It runs past the frame's edge
+    // so the mouse can slide in. A tier left out keeps the mouse baked in.
+    layout: {
+      tier1: { l: 86.2, t: 86.72, w: 28.61, h: 17.55 },
+      tier2: { l: 86.2, t: 86.72, w: 28.61, h: 17.55 },
+      tier3: { l: 86.2, t: 86.72, w: 28.61, h: 17.55 },
+    },
+  },
+};
+
+// Edges on the desk: each edge the career holds puts its prop on the desk
+// (images in assets/props/<tier>/<edge id>.webp, card art in assets/cards/).
+// Positions are percent of the 9:16 frame: left, top, width, height, measured
+// by art/build_props.py. Listed back to front: later ones draw on top.
+export const EDGE_PROPS = {
+  dir: 'assets/props',
+  cards: 'assets/cards',
+  layout: {
+    tier1: {
+      stopDiscipline: { l: 23.52, t: 78.91, w: 10.93, h: 5.73 },
+      shortWeek: { l: 39.26, t: 78.28, w: 18.7, h: 7.4 },
+      rewind: { l: 55.28, t: 78.28, w: 23.43, h: 6.88 },
+      coffee: { l: 0.0, t: 76.82, w: 18.43, h: 16.67 },
+      thetaShield: { l: 85.37, t: 77.66, w: 14.63, h: 15.05 },
+      tapeReader: { l: 14.63, t: 85.05, w: 19.35, h: 6.25 },
+      riskFriend: { l: 34.91, t: 85.83, w: 20.83, h: 5.94 },
+      whisper: { l: 51.76, t: 85.62, w: 17.96, h: 6.04 },
+      rainmaker: { l: 73.15, t: 84.32, w: 15.83, h: 6.3 },
+      hotHand: { l: 79.35, t: 90.36, w: 11.02, h: 6.67 },
+    },
+    tier2: {
+      stopDiscipline: { l: 24.07, t: 78.91, w: 9.63, h: 5.73 },
+      shortWeek: { l: 39.26, t: 78.33, w: 18.7, h: 7.34 },
+      rewind: { l: 55.37, t: 78.28, w: 23.33, h: 7.03 },
+      coffee: { l: 0.0, t: 75.78, w: 18.43, h: 18.02 },
+      thetaShield: { l: 85.37, t: 77.66, w: 14.63, h: 14.27 },
+      tapeReader: { l: 13.98, t: 85.05, w: 20.09, h: 6.2 },
+      riskFriend: { l: 35.65, t: 85.83, w: 19.26, h: 5.26 },
+      whisper: { l: 51.2, t: 85.62, w: 18.8, h: 6.04 },
+      rainmaker: { l: 72.31, t: 84.32, w: 16.94, h: 6.2 },
+      hotHand: { l: 79.35, t: 90.36, w: 11.3, h: 6.46 },
+    },
+    tier3: {
+      stopDiscipline: { l: 24.17, t: 78.85, w: 9.54, h: 5.89 },
+      shortWeek: { l: 39.26, t: 78.28, w: 18.7, h: 7.66 },
+      rewind: { l: 56.3, t: 78.28, w: 22.41, h: 7.81 },
+      coffee: { l: 0.0, t: 76.82, w: 18.43, h: 17.45 },
+      thetaShield: { l: 85.37, t: 77.66, w: 14.63, h: 15.16 },
+      tapeReader: { l: 14.17, t: 84.95, w: 20.19, h: 6.35 },
+      riskFriend: { l: 32.69, t: 84.9, w: 22.13, h: 6.25 },
+      whisper: { l: 51.2, t: 85.36, w: 18.15, h: 6.3 },
+      rainmaker: { l: 72.59, t: 84.32, w: 17.41, h: 8.18 },
+      hotHand: { l: 79.35, t: 90.36, w: 11.3, h: 6.93 },
+    },
+  },
 };
 
 // Time of day: each desk backdrop (say desk.jpg) can have a morning version
@@ -155,18 +259,21 @@ export const ENGINE = {
   },
   uCurveMid: 0.7,            // volatility multiplier at midday
   uCurveEdge: 1.6,           // volatility multiplier at open and close
+  // Bump when day generation changes: a saved day in progress from an older version restarts
+  // from its open (the same seed would now give a different tape).
+  version: 2,
   news: {
-    min: 1,
-    max: 3,
+    min: 2,                  // headlines a day (was 1–3; raised so careful play can reach the target)
+    max: 4,
     firstCandle: 6,          // earliest slot (10:00)
     lastCandle: 68,          // latest slot (15:10)
-    minGapCandles: 9,
+    minGapCandles: 8,
     shockCapShareOfDailyLimit: 0.6, // a Max position loses at most this share of the daily limit on the jump
     jumpMinShareOfCap: 0.55,
     followCandlesMin: 2,
     followCandlesMax: 4,
-    followMinShareOfJump: 0.35,
-    followMaxShareOfJump: 0.9,
+    followMinShareOfJump: 0.6,  // the drift after a headline, as a share of the jump (was 0.35–0.9)
+    followMaxShareOfJump: 1.2,
     volBoost: 1.8,           // volatility right after the shock, decaying
   },
 };
@@ -220,7 +327,7 @@ export const EDGES = [
   { id: 'rewind', name: 'Rewind', weight: 1, desc: 'Once per career, a rule break rewinds the tape 10 seconds and pauses instead.', seconds: 10, uses: 1 },
   { id: 'hotHand', name: 'Hot Hand', weight: 3, desc: 'After a green day, the next day your sizes and your daily loss limit are both 20% bigger.', sizeBoost: 0.20, lossBoost: 0.20 },
   { id: 'stopDiscipline', name: 'Stop Discipline', weight: 3, desc: "Auto-flatten when a position's open loss reaches 60% of the daily limit.", atShareOfLimit: 0.6 },
-  { id: 'tapeReader', name: 'Tape Reader', weight: 1, desc: 'News markers show ▲ or ▼ 1.5 seconds before the headline hits.', leadSeconds: 1.5 },
+  { id: 'tapeReader', name: 'Tape Reader', weight: 1, desc: 'News markers show ▲ or ▼ 1 second before the headline hits.', leadSeconds: 1.0 },
   { id: 'riskFriend', name: 'Risk Desk Friend', weight: 3, desc: 'Daily loss limit +10% for the rest of the career.', lossBuffer: 0.10 },
   { id: 'shortWeek', name: 'Short Week', weight: 2, desc: 'Profit target -12%.', targetCut: 0.12 },
   { id: 'coffee', name: 'Coffee', weight: 3, desc: 'The clock runs 15% slower.', slowdown: 0.15 },
@@ -269,6 +376,7 @@ export const AUDIO = {
   ambience: 0.35,   // trading-floor murmur during a live day
   music: 0.45,      // menu music on the title and between days
   dayMusic: 0.3,    // quieter loop under the ambience during a live day
+  rain: 0.4,        // rain on the windows on rainy days (WEATHER)
   fadeSeconds: 0.8,
   files: {
     buy: 'buy.mp3', sell: 'sell.mp3', flat: 'flatten.mp3', denied: 'denied.mp3',
@@ -276,7 +384,7 @@ export const AUDIO = {
     pass: 'pass.mp3', mulligan: 'mulligan.mp3', rep: 'rep.mp3',
     deal: 'deal.mp3', pick: 'pick.mp3', rare: 'rare.mp3', reroll: 'reroll.mp3',
     stamp: 'stamp.mp3', purchase: 'purchase.mp3',
-    ambience: 'ambience.mp3', music: 'music.mp3', dayMusic: 'day-music.mp3',
+    ambience: 'ambience.mp3', music: 'music.mp3', dayMusic: 'day-music.mp3', rain: 'rain.mp3',
   },
   // Per-sound trim, applied on top of the sfx volume.
   gain: { buy: 0.7, sell: 0.7, flat: 0.8, denied: 0.6, news: 0.8, tick: 0.5, bell: 0.9, fired: 0.9, pass: 0.9, mulligan: 0.8, rep: 0.8,
