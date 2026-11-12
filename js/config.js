@@ -165,8 +165,13 @@ export const CLICKER = {
   mouse: {
     dir: 'assets/mouse',
     // Crop of CAM_main around the desk mouse, % of 1080x1920 (left, top, width,
-    // height), from art/build_props.py --mouse. Empty: the mouse stays baked in.
-    layout: {},
+    // height), from art/build_props.py --mouse. It runs past the frame's edge
+    // so the mouse can slide in. A tier left out keeps the mouse baked in.
+    layout: {
+      tier1: { l: 86.2, t: 86.72, w: 28.61, h: 17.55 },
+      tier2: { l: 86.2, t: 86.72, w: 28.61, h: 17.55 },
+      tier3: { l: 86.2, t: 86.72, w: 28.61, h: 17.55 },
+    },
   },
 };
 
