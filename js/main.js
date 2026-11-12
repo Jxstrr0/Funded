@@ -81,6 +81,7 @@ const markAt = (i) => (RULES.option ? (S.day.right ? premiumOf(S.day.right, quot
 const mark = () => markAt(S.day.tick);
 
 function render() {
+  fx.setTimeOfDay(S.elapsed / DAY_MS);
   const last = price();
   ui.renderMarket({ ticker: S.market.ticker, last, open: S.market.open, minute: minuteNow(), dayLabel: dayLabel() });
   ui.renderL2(has('level2') && S.day.tick >= 0 ? bookAt(S.market, S.day.tick) : null);
@@ -306,6 +307,7 @@ function frame(now) {
   const dt = (Math.min(now - S.prevNow, SESSION.maxFrameMs) * SPEED) / clockScale();
   S.prevNow = now;
   S.elapsed = Math.min(DAY_MS, S.elapsed + dt);
+  fx.setTimeOfDay(S.elapsed / DAY_MS);
 
   const target = Math.min(N_TICKS - 1, Math.floor(S.elapsed / TICK_MS));
   for (let i = S.day.tick + 1; i <= target; i++) {
@@ -467,7 +469,7 @@ function careerRows() {
 /** Day-open lines from perks and edges: the morning's trend, the first headline. */
 function insightRows() {
   const out = [];
-  if (RULES.hot) out.push(['Hot Hand', 'MAX +25% today', 'up']);
+  if (RULES.hot) out.push(['Hot Hand', 'Sizes and loss limit +20% today', 'up']);
   if (has('premarket')) out.push(['Pre-market', REGIME_TEXT[S.market.regimes[0]] || '']);
   if (hasEdge('whisper') && S.market.news.length) {
     const n = S.market.news[0];
@@ -585,7 +587,7 @@ function fire(rule) {
   setScene('menu');
   render();
   fx.danger(false);
-  fx.setBackdrop(STUDIO.firedBackdrop);
+  fx.setBackdrop(STUDIO.firedBackdrop, { tod: false });
   const t = RULE_TEXT[rule];
   const snap = snapshot(S.run, S.day, mark(), RULES);
   const rep = award(false);

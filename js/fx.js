@@ -1,6 +1,8 @@
 // Juice: short visual and haptic feedback, and backdrop changes. DOM only,
 // no game logic. Everything here is skipped or toned down for players who
 // ask for reduced motion.
+import { TIME_OF_DAY } from './config.js';
+
 const $ = (id) => document.getElementById(id);
 const MINUS = '−';
 export const reducedMotion = () => matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -64,9 +66,10 @@ let token = 0;
  * and a cardboard box appears when you're fired). A missing file keeps the
  * current backdrop.
  */
-export function setBackdrop(src) {
+export function setBackdrop(src, { tod = true } = {}) {
   const desk = $('bgDesk');
   current ??= desk.getAttribute('src');
+  if (todFor === null) setTodBase(current);
   if (!src || src === current) return;
   const my = ++token;
   const img = new Image();
@@ -76,11 +79,43 @@ export function setBackdrop(src) {
     const alt = $('bgAlt');
     alt.src = src;
     alt.classList.add('show');
+    setTodBase(null); // no morning/evening layers over the crossfade
     setTimeout(() => {
       if (my !== token) return;
       desk.src = src;
+      setTodBase(tod ? src : null);
       alt.classList.remove('show');
     }, reducedMotion() ? 20 : 750);
   };
   img.src = src;
+}
+
+// ---------- time of day ----------
+
+let todFor = null;
+let todShare = 0;
+
+/** Load the -am / -pm versions of a desk backdrop (null: none). */
+function setTodBase(src) {
+  todFor = src ?? '';
+  for (const [id, t] of [['bgAm', 'am'], ['bgPm', 'pm']]) {
+    const el = $(id);
+    el.classList.remove('ok');
+    el.onload = null;
+    if (!src) { el.removeAttribute('src'); continue; }
+    const want = src.replace(/\.jpg$/, `-${t}.jpg`);
+    el.onload = () => { if (todFor === src) { el.classList.add('ok'); setTimeOfDay(todShare); } };
+    el.onerror = () => el.classList.remove('ok');
+    el.src = want;
+  }
+}
+
+/** Light the desk for a moment of the day: 0 = the open, 1 = the bell. */
+export function setTimeOfDay(share) {
+  todShare = Math.max(0, Math.min(1, share));
+  const t = TIME_OF_DAY;
+  const am = Math.max(0, 1 - todShare / t.amFadeEnd);
+  const pm = Math.max(0, (todShare - t.pmFadeStart) / (1 - t.pmFadeStart)) * t.pmPeak;
+  $('bgAm').style.opacity = am.toFixed(3);
+  $('bgPm').style.opacity = pm.toFixed(3);
 }

@@ -26,6 +26,7 @@ Every number lives in `js/config.js`:
 - `TIER1`: balance, target, daily loss limit, drawdown, min days, buying-power multiplier, size buttons.
 - `TIER2` (futures) and `TIER3` (options): the same rules, plus the contract, premium budget, implied volatility and earnings shock settings.
 - `SESSION`: day length (180 s), candles, ticks per candle, bell warning.
+- `TIME_OF_DAY`: when the morning light fades out and the closing-bell light fades in over the desk.
 - `PERKS`, `REPUTATION`, `TUTORIAL`: perk costs and effects, Rep formula, the scripted training day.
 - `EDGES`, `EDGE_CHOICES`, `MANDATES`: the edge cards picked during a career (effects and how often each is offered; `weight: 1` is rare) and the optional handicaps with their Rep bonuses.
 - `ENGINE`: volatility, trend drift, regimes, intraday U-curve, news count, jump cap (`shockCapShareOfDailyLimit`).
@@ -38,6 +39,7 @@ They are percentages of the 9:16 frame, so sharper renders at the same framing n
 - Add `?speed=10` to the URL to run the market clock 10x faster (up to 60x).
 - Desktop keys: **B** buy, **S** sell, **F** flatten, **1–3** size, **P** or **Space** pause.
 - Logic tests (no install needed, Node 22+): `node --test tests/*.test.js`
+- Balance check: `node tools/balance.mjs` plays thousands of evals with each edge and mandate and prints pass and firing rates (about a minute).
 
 ## Files
 
@@ -57,8 +59,9 @@ js/meta.js        Reputation, perk shop, tutorial flag
 js/edges.js       edge drafts, mandates, Rep multiplier (pure)
 js/tutorial.js    guided training day
 js/main.js        boot, intro, game loop and state machine
-assets/           desk.jpg, desk-tier2.jpg, desk-tier3.jpg, desk-fired.jpg (gameplay), wide.jpg (intro), audio/
+assets/           desk.jpg, desk-tier2.jpg, desk-tier3.jpg (+ -am / -pm light), desk-fired.jpg (gameplay), wide.jpg (intro), audio/
 art/              build_scene.py: the Blender scene that renders the backdrops
+tools/balance.mjs bot that plays thousands of evals to compare edges and mandates
 tests/            node:test suites for engine and rules
 ```
 

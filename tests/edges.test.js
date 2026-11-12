@@ -43,13 +43,13 @@ test('drafts: Analyst shows 4, Reroll changes the offer once, taking an edge clo
 test('edges and mandates change the rules', () => {
   assert.equal(effectiveRules(['thickSkin'], TIER1, { edges: ['riskFriend'] }).dailyLossLimit, 900);
   assert.equal(effectiveRules([], TIER1, { mandates: ['tightLeash'] }).dailyLossLimit, 563);
-  assert.equal(effectiveRules([], TIER1, { edges: ['shortWeek'] }).profitTarget, 1380);
+  assert.equal(effectiveRules([], TIER1, { edges: ['shortWeek'] }).profitTarget, 1320);
   assert.equal(effectiveRules([], TIER1, { edges: ['coffee'] }).clockScale, 1.15);
-  assert.equal(effectiveRules([], TIER1, { hot: true }).buyingPowerMultiplier, 4.16);
-  assert.equal(effectiveRules([], TIER2, { hot: true }).maxContracts, 8);
+  assert.equal(effectiveRules([], TIER1, { hot: true }).buyingPowerMultiplier, 4);
+  assert.equal(effectiveRules([], TIER2, { hot: true }).maxContracts, 7);
   const o = effectiveRules([], TIER3, { hot: true, edges: ['thetaShield'] });
-  assert.equal(o.option.premiumBudget, 2500);
-  assert.equal(o.maxContracts, 50);
+  assert.equal(o.option.premiumBudget, 2400);
+  assert.equal(o.maxContracts, 48);
   assert.ok(o.option.shield);
   assert.equal(TIER3.option.premiumBudget, 2000, 'tier config is never mutated');
   assert.equal(effectiveRules([], TIER1, { edges: ['thetaShield'] }).option, undefined);
@@ -63,6 +63,10 @@ test('Hot Hand only after a green day', () => {
   assert.equal(careerOf(run).hot, false);
   assert.equal(careerOf({ ...run, history: [{ pnl: 120 }] }).hot, true);
   assert.equal(careerOf({ ...run, history: [{ pnl: -50 }] }).hot, false);
+  const hot = effectiveRules([], TIER1, { edges: ['hotHand'], hot: true });
+  assert.equal(hot.dailyLossLimit, 900);
+  assert.equal(hot.buyingPowerMultiplier, 4);
+  assert.equal(hot.hot, true);
 });
 
 test('Rep multiplier: mandates add, Rainmaker multiplies', () => {
