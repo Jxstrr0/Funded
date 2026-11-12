@@ -128,6 +128,21 @@ blender -b --factory-startup -P art/build_scene.py -- --dolly [--dolly-res 720] 
 
   The result is H.264, yuv420p, 720x1280, 24 fps, 60 frames (2.5 s), 466 KB, with no audio. Its first frame matches `wide.jpg` and its last matches `desk.jpg`: the mean absolute difference is about 2/255 after encoding and about 1/255 for the PNG frames.
 
+### `--mouse`: the desk mouse layers (art/build_props.py)
+
+```
+python3 art/build_props.py --mouse [--tiers tier1,tier2,tier3] [--tods mid,am,pm] [--samples 192]
+```
+
+- For each tier and time of day, this runs `build_scene.py` with `--hook art/build_props.py --mouse`. It renders a crop of CAM_main around the hero mouse three times, like the edge props: with the mouse (A), without it (B), and as a matte (M).
+- It writes `assets/mouse/<tier>-plate[-am|-pm].webp`: the desk with the mouse and its shadow removed. The plate is fully opaque with a hard edge: it matches the desk to about 1/255, and a soft edge would leave a faint seam where the game stacks the `-am` / `-pm` plates at partial opacity.
+- It writes `assets/mouse/<tier>-mouse[-am|-pm].webp`: the mouse and its contact shadow, with straight alpha. The plate and the mouse share one box, so the mouse over the plate reproduces A.
+- The mouse hangs off the right and bottom edges of the frame. The crop is rendered with a 160 px overscan: a copy of CAM_main with a larger sensor and resolution at the same pixel scale. So the layer has no cut edge when it slides left or up, and the box runs past 100%.
+- The box leaves room for `MOUSE_TRAVEL` (±1.4% of frame width, ±0.8% of height) plus a 12 px spare margin on every edge that can come into frame. It is the same for every tod. The script prints it as `MOUSE LAYOUT` for `CLICKER.mouse.layout` and saves it in `art/out/mouse/layout-<tier>.json`. All three tiers come out the same: `{ l: 86.2, t: 86.72, w: 28.61, h: 17.55 }`.
+- It then composites plate + mouse over each desk JPG with Pillow and prints the error at rest. The mean inside the box is about 1.9/255, and p99 is 8–10. It also writes `art/out/mouse/check-mouse.png`. The columns are: desk, at rest, the four corners of the travel, and |rest − desk| ×8.
+- `--tods mid,am,pm,rain` also writes `-rain` layers for the `--weather rain` desks, but the game doesn't load them yet.
+- Time: about 30–70 s per tier and tod at 192 samples (8 min for all nine).
+
 ### Render times (4 CPU cores)
 
 | Render | Samples, size | Time |
