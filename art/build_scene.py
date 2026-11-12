@@ -5,7 +5,8 @@ both backdrops (CAM_main -> desk.png, CAM_wide -> wide.png) with Cycles on CPU.
 
     blender -b --factory-startup -P art/build_scene.py -- [--out DIR] [--samples N] [--preview]
                                                            [--cams main,wide] [--variant tier1|tier2|tier3|fired]
-                                                           [--tod am|mid|pm]
+                                                           [--tod am|mid|pm] [--funded] [--weather rain]
+                                                           [--dolly [--dolly-res W] [--dolly-frames N]]
 
 --variant picks the gameplay desk (CAM_main) for each career stage: tier1 (back
 row, the default and the original look), tier2 (mid-floor with wing monitors),
@@ -15,6 +16,26 @@ tier3 (window seat over the city) or fired (tier1 desk with a packed box).
 the opening bell to the close): am (cool, soft morning), mid (the default) or pm
 (warm, low late-afternoon sun). It only changes lights, sky, glass, the city's
 windows and haze; geometry, cameras and the hero screens stay as they are.
+
+--funded (with --variant tier1|tier2|tier3, no --tod) is the eval-passed desk: the
+pm light plus the pass-moment props (a FUNDED tent card in gold foil, an envelope
+with a green wax seal, a walnut plaque with a brass FUNDED plate, a bottle at the
+left edge). Writes desk-funded.png / desk-tier2-funded.png / desk-tier3-funded.png.
+Every prop sits below the bottom screen (lower than 78.4% of the frame) or in the
+side strips (x < 11% or > 89%); the clearance check covers it.
+
+--weather rain (with --variant tier1|tier2|tier3, mid only) is an overcast rainy
+day: flat cool light and no sun, towers fading into mist, rain beads and rivulets
+on the tier3 glass, misty streaked glass far away on tier1/tier2, and curtains of
+falling rain outside. Writes desk-rain.png / desk-tier2-rain.png / desk-tier3-rain.png.
+
+--dolly renders the intro camera move on the tier1 mid desk: DOLLY_FRAMES (60)
+frames at 24 fps from CAM_wide (frame 1, chair in place, = wide.png) to CAM_main
+(the last frame, chair gone, = desk.png) into OUT_DIR/dolly/0001.png..., at
+--dolly-res wide (default 720 -> 720x1280). Position is gently eased, rotation is
+an ease-in-out slerp, the lens goes 30 -> 35 mm, and the hero chair rolls back and
+out to the right. Existing frames are skipped (delete the folder to re-render).
+Encode with the ffmpeg line the script prints (see art/README.md).
 
 Everything is procedural (no downloaded assets). See art/README.md for the
 camera/screen contract that must stay fixed.
@@ -59,10 +80,34 @@ if TOD not in ("am", "mid", "pm"):
     raise SystemExit("--tod must be one of am, mid, pm")
 if VARIANT == "fired" and TOD != "mid":
     raise SystemExit("--tod does not apply to the fired desk")
+# --funded: the eval-passed desk (pass-moment props, late-afternoon light) for tier1..tier3.
+FUNDED = "--funded" in argv
+# --weather rain: an overcast, rainy mid-day for tier1..tier3.
+WEATHER = _arg("--weather", None)
+# --dolly: the intro camera move from CAM_wide to CAM_main as PNG frames (tier1, mid).
+DOLLY = "--dolly" in argv
+DOLLY_W = int(_arg("--dolly-res", 720))     # frame width; height is 16:9 of it
+DOLLY_FRAMES = int(_arg("--dolly-frames", 60))
+DOLLY_FPS = 24
+DOLLY_EASE = 0.6                            # 0 = linear position, 1 = full smoothstep
+if FUNDED and (VARIANT not in ("tier1", "tier2", "tier3") or TOD != "mid" or WEATHER):
+    raise SystemExit("--funded works with --variant tier1|tier2|tier3 only (no --tod: it has its own late light, "
+                     "no --weather)")
+if WEATHER not in (None, "rain"):
+    raise SystemExit("--weather must be rain")
+if WEATHER and (VARIANT not in ("tier1", "tier2", "tier3") or TOD != "mid"):
+    raise SystemExit("--weather rain works with --variant tier1|tier2|tier3 at mid time of day only")
+if DOLLY and (VARIANT != "tier1" or TOD != "mid" or WEATHER or FUNDED):
+    raise SystemExit("--dolly renders the plain tier1 desk at mid time of day")
+# The light used: the funded desk is lit like --tod pm.
+LIGHT_TOD = "pm" if FUNDED else TOD
 # Variants and times of day only change the gameplay view, so they render CAM_main unless asked otherwise.
-CAMS = _arg("--cams", "main,wide" if VARIANT == "tier1" and TOD == "mid" else "main").split(",")
+PLAIN = VARIANT == "tier1" and TOD == "mid" and not WEATHER and not FUNDED
+CAMS = _arg("--cams", "main,wide" if PLAIN else "main").split(",")
 SUFFIX = "" if VARIANT == "tier1" else "-" + VARIANT     # desk.png / desk-tier2.png ...
 SUFFIX += "" if TOD == "mid" else "-" + TOD               # desk-am.png / desk-tier2-pm.png ...
+SUFFIX += "-funded" if FUNDED else ""                     # desk-funded.png / desk-tier3-funded.png
+SUFFIX += "-" + WEATHER if WEATHER else ""                # desk-rain.png / desk-tier2-rain.png ...
 
 # ---------------------------------------------------------------------------
 # Contract (do not change: the game overlays its UI on the hero screens)
@@ -1507,17 +1552,17 @@ DAY3_SKY = [(0.0, "#c3d0e2"), (0.6, "#4a73b0"), (0.06, "#dfe1e6"), (0.2, "#a2bbd
 def tod_env():
     """(sky stops, ambient colour, ambient strength, make_tower kwargs) for VARIANT and TOD."""
     if VARIANT == "tier3":
-        if TOD == "pm":
+        if LIGHT_TOD == "pm":
             return DUSK_SKY, "#8c7fa6", 0.35, dict(lit_base=0.6, haze_col="#c99aa6", tones=("#1b2340", "#2f3a5e"),
                                                    glass_cols=("#1a2340", "#56507e"), haze_start=40.0, haze_len=300.0)
-        if TOD == "am":
+        if LIGHT_TOD == "am":
             return AM_SKY, "#7d93b6", 0.3, dict(lit_base=0.9, haze_col="#cfd9e6", tones=("#2b3c58", "#4a5d80"),
                                                 glass_cols=("#25344f", "#55698c"), haze_start=30.0, haze_len=210.0)
         return DAY3_SKY, "#6f88ad", 0.3, dict(lit_base=0.84, haze_col="#bccbdf", tones=("#26385a", "#435a80"),
                                               glass_cols=("#1e2e4a", "#4a6590"), haze_start=45.0, haze_len=260.0)
-    if TOD == "am":
+    if LIGHT_TOD == "am":
         return AM_SKY, "#8aa0c0", 0.32, dict(lit_base=0.9, haze_col="#cdd8e6", haze_start=30.0, haze_len=170.0)
-    if TOD == "pm":
+    if LIGHT_TOD == "pm":
         return PM_SKY, "#b39070", 0.3, dict(lit_base=0.66, haze_col="#e2b9a4", tones=("#2b2f4c", "#4a4f70"),
                                              glass_cols=("#2a2c48", "#6c5f80"))
     return DAY_SKY, "#6d84a8", 0.26, None
@@ -1525,7 +1570,7 @@ def tod_env():
 
 def set_glass(color):
     """Window glass tint (transparent only: glossy mirrored the ceiling lights as bright bands)."""
-    g = bpy.data.materials.new("window_glass_" + TOD)
+    g = bpy.data.materials.new("window_glass_" + LIGHT_TOD)
     nb = NB(g)
     t = nb.node("ShaderNodeBsdfTransparent")
     t.inputs[0].default_value = hex_lin(color)
@@ -1564,12 +1609,15 @@ def apply_tod():
     """Lights and glass for the time of day. A no-op for tier1/tier2 mid and for fired."""
     if VARIANT == "fired":
         return
+    if WEATHER:
+        apply_weather()
+        return
     if VARIANT == "tier3":
-        if TOD == "pm":                                    # the original dusk
+        if LIGHT_TOD == "pm":                                    # the original dusk
             set_glass("#f4eeec")
             add_sun("dusk_sun", 2.2, "#ffb98a", 10, 24)
             tune_lights({"window_fill": (None, "#f0c7b0", 260.0)})
-        elif TOD == "am":
+        elif LIGHT_TOD == "am":
             set_glass("#eaf0f8")
             tune_lights({"window_fill": (None, "#d6e3f6", 520.0),
                          "panel_light": (0.85, "#eef3ff", None),
@@ -1580,7 +1628,7 @@ def apply_tod():
             add_sun("day_sun", 1.2, "#fff4e4", 48, 32, angle=1.0)
             tune_lights({"window_fill": (None, "#d0dcf0", 600.0)})
         return
-    if TOD == "am":
+    if LIGHT_TOD == "am":
         set_glass("#e8f0fa")
         tune_lights({"window_fill": (1.5, "#dce8fa", None),
                      "panel_light": (0.68, "#e4eeff", None),
@@ -1588,7 +1636,7 @@ def apply_tod():
                      "hero_rim": (0.85, "#d6e3ff", None),
                      "lamp_light": (0.35, None, None)})
         set_mat("light_panel", mat_emit("ceiling_panel_am", "#eaf2ff", 1.15))
-    elif TOD == "pm":
+    elif LIGHT_TOD == "pm":
         set_glass("#f6ece2")
         add_sun("late_sun", 3.0, "#ffac66", 18, 32)
         tune_lights({"window_fill": (1.4, "#ffc48a", None),
@@ -1701,19 +1749,551 @@ def variant_fired():
             ob.material_slots[0].material = mat_basic("lamp_off", "#d8d2c4", 0.3)
 
 
-def check_clear(cam_ob, rects, objs, below=None):
-    """Project every vertex in front of the hero screen plane; report any that land inside a hero
-    screen rectangle. With `below`, also require every vertex to sit lower in frame than that %."""
-    bad, top_most, top_ob = 0, 100.0, ""
-    for ob in objs:
-        if ob.type != "MESH":
+# ---------------------------------------------------------------------------
+# The pass moment (--variant funded): the tier1 desk in late-afternoon light with a
+# FUNDED tent card, a sealed envelope, a brass plaque and a bottle. Everything sits
+# below the bottom hero screen (lower than 78.4% of the frame) or in the side strips.
+# ---------------------------------------------------------------------------
+# A heavy sans for the engraved words (the game's Space Grotesk ships as a variable font whose
+# overlapping contours fill badly as Blender text); Blender's built-in font if it is missing.
+FONT_PATHS = ("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+              "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf")
+
+
+def load_font():
+    for p in FONT_PATHS:
+        try:
+            return bpy.data.fonts.load(os.path.abspath(p), check_existing=True)
+        except Exception:
             continue
-        mw = ob.matrix_world
-        for vtx in ob.data.vertices:
+    return None          # Blender's built-in font
+
+
+def lathe_mesh(name, prof, n=48, cap_top=True, cap_bot=True):
+    """Surface of revolution about Z from a (radius, z) profile listed bottom to top."""
+    bm = bmesh.new()
+    rings = []
+    for r, z in prof:
+        rings.append([bm.verts.new((r * math.cos(2 * math.pi * i / n), r * math.sin(2 * math.pi * i / n), z))
+                      for i in range(n)])
+    for a, b in zip(rings, rings[1:]):
+        for i in range(n):
+            j = (i + 1) % n
+            bm.faces.new((a[i], a[j], b[j], b[i]))
+    if cap_bot and prof[0][0] > 1e-5:
+        bm.faces.new(list(reversed(rings[0])))
+    if cap_top and prof[-1][0] > 1e-5:
+        bm.faces.new(rings[-1])
+    bmesh.ops.remove_doubles(bm, verts=bm.verts, dist=1e-6)
+    bmesh.ops.recalc_face_normals(bm, faces=bm.faces)
+    return bm_mesh(bm, name, smooth=50.0)
+
+
+def prism_mesh(name, pts, h):
+    """A flat polygon (XY points, counter-clockwise) extruded up by h."""
+    bm = bmesh.new()
+    lo = [bm.verts.new((x, y, 0.0)) for x, y in pts]
+    hi = [bm.verts.new((x, y, h)) for x, y in pts]
+    bm.faces.new(list(reversed(lo)))
+    bm.faces.new(hi)
+    n = len(pts)
+    for i in range(n):
+        j = (i + 1) % n
+        bm.faces.new((lo[i], lo[j], hi[j], hi[i]))
+    bmesh.ops.recalc_face_normals(bm, faces=bm.faces)
+    return bm_mesh(bm, name, smooth=30.0)
+
+
+def empty_obj(name, loc, rot=(0, 0, 0), parent=None, collection="Funded"):
+    e = bpy.data.objects.new(name, None)
+    e.location = loc
+    e.rotation_euler = rot
+    coll(collection).objects.link(e)
+    if parent is not None:
+        e.parent = parent
+    return e
+
+
+def text_obj(name, body, size, mat, loc, rot=(math.radians(90), 0, 0), parent=None, collection="Funded",
+             extrude=0.0, weight=0.0, spacing=1.0, font=None):
+    """Centred text standing in the XZ plane (facing -Y) of its parent. `weight` thickens the glyphs."""
+    cu = bpy.data.curves.new(name, "FONT")
+    cu.body = body
+    cu.size = size
+    cu.align_x = "CENTER"
+    cu.align_y = "CENTER"
+    cu.extrude = extrude
+    cu.offset = weight
+    cu.space_character = spacing
+    cu.resolution_u = 6
+    if font is not None:
+        cu.font = font
+    cu.materials.append(mat)
+    ob = bpy.data.objects.new(name, cu)
+    ob.location = loc
+    ob.rotation_euler = rot
+    coll(collection).objects.link(ob)
+    if parent is not None:
+        ob.parent = parent
+    return ob
+
+
+def make_card_paper(name, color, fleck="#d9cba8"):
+    """Heavy cream card: soft fibre mottling and a fine tooth in the bump."""
+    m = bpy.data.materials.new(name)
+    nb = NB(m)
+    tc = nb.node("ShaderNodeTexCoord")
+    fib = nb.noise(vec=tc.outputs["Object"], dims="3D", scale=900.0, detail=2.0)[0]
+    blot = nb.noise(vec=tc.outputs["Object"], dims="3D", scale=40.0, detail=3.0)[0]
+    col = nb.mix(nb.m("MULTIPLY", blot, 0.18), color, fleck)
+    bump = nb.node("ShaderNodeBump")
+    bump.inputs["Strength"].default_value = 0.12
+    bump.inputs["Distance"].default_value = 0.0002
+    nb.link(bump.inputs["Height"], fib)
+    b = nb.node("ShaderNodeBsdfPrincipled")
+    nb.link(b.inputs["Base Color"], col)
+    b.inputs["Roughness"].default_value = 0.72
+    b.inputs["Sheen Weight"].default_value = 0.3
+    nb.link(b.inputs["Normal"], bump.outputs[0])
+    nb.output(b.outputs[0])
+    m.diffuse_color = hex_lin(color)
+    return m
+
+
+def make_foil(name="gold_foil", color="#e3bd5e", rough=0.16):
+    """Gold foil / polished brass: metallic with a slightly crinkled, uneven sheen. Foil is
+    rougher, so it catches the broad key light instead of mirroring the dim room."""
+    m = bpy.data.materials.new(name)
+    nb = NB(m)
+    tc = nb.node("ShaderNodeTexCoord")
+    n = nb.noise(vec=tc.outputs["Object"], dims="3D", scale=260.0, detail=3.0)[0]
+    b = nb.node("ShaderNodeBsdfPrincipled")
+    nb.link(b.inputs["Base Color"], nb.mix(nb.m("MULTIPLY", n, 0.35), color, "#b8862e"))
+    b.inputs["Metallic"].default_value = 1.0
+    nb.link(b.inputs["Roughness"], nb.m("ADD", rough, nb.m("MULTIPLY", n, 0.14)))
+    bump = nb.node("ShaderNodeBump")
+    bump.inputs["Strength"].default_value = 0.18
+    bump.inputs["Distance"].default_value = 0.0002
+    nb.link(bump.inputs["Height"], n)
+    nb.link(b.inputs["Normal"], bump.outputs[0])
+    nb.output(b.outputs[0])
+    return m
+
+
+def make_bottle_glass():
+    """Dark green bottle glass: a little transmission, a clear coat for the long highlights."""
+    m = bpy.data.materials.new("bottle_glass")
+    nb = NB(m)
+    b = nb.node("ShaderNodeBsdfPrincipled")
+    b.inputs["Base Color"].default_value = hex_lin("#0f3a22")
+    b.inputs["Roughness"].default_value = 0.06
+    b.inputs["Transmission Weight"].default_value = 0.35
+    b.inputs["IOR"].default_value = 1.5
+    b.inputs["Coat Weight"].default_value = 1.0
+    b.inputs["Coat Roughness"].default_value = 0.03
+    nb.output(b.outputs[0])
+    return m
+
+
+def variant_funded():
+    """Tier1 desk on the day the eval is passed (lit with the pm light in main())."""
+    C = "Funded"
+    D = DESK_H
+    font = load_font()
+    cream = make_card_paper("card_cream", "#f3ead3")
+    foil = make_foil("gold_foil", "#f0c860", rough=0.34)
+    ink = mat_basic("ink", "#1b2340", 0.55)
+    engrave = mat_basic("engrave", "#20160c", 0.5)
+
+    # tent card: two cream panels folded along the top edge, the front leaning back 16 deg
+    cw, chh, th = 0.19, 0.105, 0.0018
+    tilt = math.radians(16)
+    card = empty_obj("card_root", (-0.085, 0.0, D), (0, 0, math.radians(4)))
+    back = empty_obj("card_back", (0, 2 * chh * math.sin(tilt), 0), (math.radians(16), 0, 0), parent=card)
+    add_obj("card_panel_b", box_mesh(cw, th, chh, bevel=0.0006), (0, 0, chh / 2), cream, collection=C, parent=back)
+    front = empty_obj("card_front", (0, 0, 0), (-tilt, 0, 0), parent=card)
+    add_obj("card_panel", box_mesh(cw, th, chh, bevel=0.0006), (0, 0, chh / 2), cream, collection=C, parent=front)
+    fy = -th / 2 - 0.0003
+    # foil border, FUNDED, a rule and the line under it
+    for z in (0.008, chh - 0.008):
+        add_obj("card_border", box_mesh(cw - 0.016, 0.0004, 0.0012), (0, fy, z), foil, collection=C, parent=front)
+    for x in (-(cw / 2 - 0.008), cw / 2 - 0.008):
+        add_obj("card_border", box_mesh(0.0012, 0.0004, chh - 0.016), (x, fy, chh / 2), foil, collection=C, parent=front)
+    text_obj("card_funded", "FUNDED", 0.034, foil, (0, fy, 0.064), parent=front, extrude=0.00025,
+             spacing=1.06, font=font)
+    add_obj("card_rule", box_mesh(0.12, 0.0004, 0.0011), (0, fy, 0.0435), foil, collection=C, parent=front)
+    text_obj("card_sub", "EVALUATION PASSED", 0.0112, ink, (0, fy, 0.028), parent=front,
+             spacing=1.2, font=font)
+
+    # envelope flat on the desk, flap down, with a green wax seal
+    # (it lies on the 3 mm desk mat)
+    env = empty_obj("env_root", (0.15, -0.04, D + 0.003), (0, 0, math.radians(-9)))
+    paper = make_card_paper("envelope_paper", "#ece0c4", "#cdbb92")
+    ew, ed = 0.19, 0.115
+    add_obj("envelope", box_mesh(ew, ed, 0.003, bevel=0.0008), (0, 0, 0.0015), paper, collection=C, parent=env)
+    # the flap: a thin triangle from the front edge to a point past the middle, the seal on its tip
+    tip_y = ed * 0.14
+    add_obj("envelope_flap", prism_mesh("env_flap", [(-ew / 2 + 0.002, -ed / 2 + 0.002), (ew / 2 - 0.002, -ed / 2 + 0.002),
+                                                     (0, tip_y)], 0.0007),
+            (0, 0, 0.003), paper, collection=C, parent=env)
+    rng = random.Random(31)
+    seal_n = 40
+    sbm = bmesh.new()
+    # an irregular blob of wax with a raised ring and a pressed triangle (the game's up arrow) in the middle
+    ring = []
+    for i in range(seal_n):
+        a = 2 * math.pi * i / seal_n
+        r = 0.017 * (1 + 0.08 * math.sin(3 * a + 0.7) + 0.05 * math.sin(7 * a) + rng.uniform(-0.02, 0.02))
+        ring.append((r, a))
+    layers = [(1.0, 0.0), (1.0, 0.0012), (0.93, 0.0032), (0.78, 0.0042), (0.7, 0.0036), (0.62, 0.0032), (0.0, 0.0034)]
+    rows = []
+    for f, z in layers:
+        rows.append([sbm.verts.new((r * f * math.cos(a), r * f * math.sin(a), z)) for r, a in ring])
+    for a_, b_ in zip(rows, rows[1:]):
+        for i in range(seal_n):
+            j = (i + 1) % seal_n
+            sbm.faces.new((a_[i], a_[j], b_[j], b_[i]))
+    sbm.faces.new(list(reversed(rows[0])))
+    bmesh.ops.remove_doubles(sbm, verts=sbm.verts, dist=1e-7)
+    bmesh.ops.recalc_face_normals(sbm, faces=sbm.faces)
+    wax = mat_basic("wax", "#2FBF71", 0.32, coat=0.6)
+    add_obj("seal", bm_mesh(sbm, "seal", smooth=60.0), (0, tip_y - 0.004, 0.0037), wax, collection=C, parent=env)
+    add_obj("seal_mark", prism_mesh("seal_mark", [(-0.0055, -0.004), (0.0055, -0.004), (0, 0.0055)], 0.0006),
+            (0, tip_y - 0.004, 0.0068), mat_basic("wax_dark", "#1f9a58", 0.4, coat=0.5), collection=C, parent=env)
+
+    # walnut wedge plaque with a brass plate: one big word
+    pl = empty_obj("plaque_root", (0.2, 0.05, D), (0, 0, math.radians(-12)))
+    pw, pd, ph = 0.13, 0.05, 0.056
+    wb = bmesh.new()
+    for v in [(-pw / 2, -pd / 2, 0), (pw / 2, -pd / 2, 0), (pw / 2, pd / 2, 0), (-pw / 2, pd / 2, 0),
+              (-pw / 2, -0.004, ph), (pw / 2, -0.004, ph), (pw / 2, pd / 2, ph), (-pw / 2, pd / 2, ph)]:
+        wb.verts.new(v)
+    wb.verts.ensure_lookup_table()
+    V = wb.verts
+    for f in [(0, 3, 2, 1), (4, 5, 6, 7), (0, 1, 5, 4), (1, 2, 6, 5), (2, 3, 7, 6), (3, 0, 4, 7)]:
+        wb.faces.new([V[i] for i in f])
+    bmesh.ops.recalc_face_normals(wb, faces=wb.faces)
+    bmesh.ops.bevel(wb, geom=list(wb.edges), offset=0.0025, segments=3, affect="EDGES", profile=0.5)
+    walnut = make_wood("plaque_walnut", "#6a4329", "#2e1a0e", rough=0.3, coat=0.7, ring_scale=30.0)
+    add_obj("plaque", bm_mesh(wb, "plaque", smooth=40.0), (0, 0, 0), walnut, collection=C, parent=pl)
+    slope = math.atan2(pd / 2 - 0.004, ph)          # the front face leans back by this much
+    face = empty_obj("plaque_face", (0, (-pd / 2 - 0.004) / 2 - 0.0008, ph / 2), (-slope, 0, 0), parent=pl)
+    brass = make_foil("brass", "#d2ab55")
+    add_obj("plaque_plate", box_mesh(0.112, 0.0016, 0.038, bevel=0.0007), (0, 0, 0), brass, collection=C, parent=face)
+    text_obj("plaque_txt", "FUNDED", 0.024, engrave, (0, -0.0009, 0.0), parent=face, extrude=0.0001,
+             spacing=1.06, font=font)
+
+    # champagne bottle at the far left edge, beside the screens (in the side strip)
+    prof = [(0, 0.0), (0.033, 0.0), (0.0365, 0.004), (0.037, 0.012), (0.037, 0.19), (0.035, 0.205), (0.029, 0.225),
+            (0.021, 0.248), (0.0155, 0.27), (0.0138, 0.30), (0.0152, 0.304), (0.0152, 0.312), (0.0, 0.314)]
+    b = empty_obj("bottle_root", (-0.3, 0.075, D), (0, 0, math.radians(30)))
+    add_obj("bottle", lathe_mesh("bottle", prof), (0, 0, 0), make_bottle_glass(), collection=C, parent=b)
+    add_obj("bottle_foil", lathe_mesh("bottle_foil", [(0.0262, 0.236), (0.0215, 0.250), (0.0162, 0.272), (0.0146, 0.30),
+                                                      (0.016, 0.304), (0.016, 0.315), (0.0, 0.317)]),
+            (0, 0, 0), foil, collection=C, parent=b)
+    add_obj("bottle_label", lathe_mesh("bottle_label", [(0.0374, 0.075), (0.0374, 0.145)], cap_top=False, cap_bot=False),
+            (0, 0, 0), cream, collection=C, parent=b)
+    add_obj("bottle_band", lathe_mesh("bottle_band", [(0.0376, 0.118), (0.0376, 0.126)], cap_top=False, cap_bot=False),
+            (0, 0, 0), foil, collection=C, parent=b)
+    add_obj("bottle_neck_label", lathe_mesh("bottle_neck", [(0.0232, 0.2445), (0.0183, 0.2585)], cap_top=False, cap_bot=False),
+            (0, 0, 0), cream, collection=C, parent=b)
+
+
+# ---------------------------------------------------------------------------
+# Weather (--weather rain): an overcast, rainy mid-day for tier1..tier3. Flat cool light,
+# no sun, the city fading into mist, rain on the window glass and a curtain of falling rain
+# outside. Like --tod it only touches lights, sky, glass, the city's materials and a few
+# camera-only planes outside the window wall.
+# ---------------------------------------------------------------------------
+RAIN_SKY = [(0.0, "#b3b9c0"), (0.55, "#6e7883"), (0.05, "#c2c6cb"), (0.2, "#9aa2ab")]
+
+
+def weather_env():
+    """(sky stops, ambient colour, ambient strength, make_tower kwargs) for a rain day."""
+    if VARIANT == "tier3":
+        return RAIN_SKY, "#8792a2", 0.34, dict(lit_base=0.9, haze_col="#a3abb5", tones=("#36414f", "#4d5868"),
+                                               glass_cols=("#3a4654", "#5a6676"), haze_start=10.0, haze_len=170.0)
+    return RAIN_SKY, "#858d98", 0.3, dict(lit_base=0.8, haze_col="#a9b0b9", tones=("#3a4452", "#525d6c"),
+                                          glass_cols=("#3c4756", "#5e6877"), haze_start=8.0, haze_len=120.0)
+
+
+def make_rain_glass(near=True):
+    """Window glass on a rain day. The sky and the towers only show to camera rays (make_world,
+    camera_only), so true refraction through a drop would see the dim ambient and read as a dark
+    speck. The drops are faked instead: a clear core lifted with a little sky-coloured light
+    (a drop focuses the bright sky), a darker refracting rim, and a glossy coat on a domed bump
+    that catches the ceiling lights. `near` (tier3, glass right behind the desk) gets beads and
+    rivulets; the far windows of tier1/tier2 get misty glass with faint running streaks."""
+    m = bpy.data.materials.new("rain_glass" + ("_near" if near else "_far"))
+    nb = NB(m)
+    tc = nb.node("ShaderNodeTexCoord")
+    P = tc.outputs["Object"]
+    X, _, Z = nb.sep(P)
+
+    def drop_layer(scale, keep, rmin, rspan, seed):
+        v = nb.node("ShaderNodeTexVoronoi", feature="F1")
+        v.inputs["Scale"].default_value = scale
+        v.inputs["Randomness"].default_value = 1.0
+        # drops hang slightly taller than wide
+        nb.link(v.inputs["Vector"], nb.comb(nb.m("ADD", X, seed), 0.0, nb.m("MULTIPLY", Z, 0.85)))
+        c = nb.sep(v.outputs["Color"])
+        size = nb.m("MULTIPLY_ADD", c[0], rspan, rmin)
+        rn = nb.m("DIVIDE", v.outputs["Distance"], size)
+        alive = nb.m("LESS_THAN", c[1], keep)
+        inside = nb.m("MULTIPLY", nb.m("LESS_THAN", rn, 1.0), alive)
+        dome = nb.m("SQRT", nb.m("MAXIMUM", nb.m("SUBTRACT", 1.0, nb.m("MULTIPLY", rn, rn)), 0.0))
+        h = nb.m("MULTIPLY", dome, inside)
+        # the lower half of a drop shows the bright sky above, focused
+        below = nb.m("GREATER_THAN", nb.m("SUBTRACT", nb.sep(v.outputs["Position"])[2], nb.m("MULTIPLY", Z, 0.85)), 0.0)
+        return h, rn, below
+
+    if near:
+        h1, rn1, lo1 = drop_layer(26.0, 0.55, 0.14, 0.24, 0.0)
+        h2, rn2, lo2 = drop_layer(70.0, 0.45, 0.12, 0.22, 17.3)
+        h3, rn3, lo3 = drop_layer(160.0, 0.35, 0.10, 0.2, 41.9)
+        use2 = nb.m("GREATER_THAN", h2, h1)
+        h = nb.m("MAXIMUM", h1, h2)
+        rn = nb.mix(use2, rn1, rn2)
+        lo = nb.mix(use2, lo1, lo2)
+        use3 = nb.m("GREATER_THAN", h3, h)
+        h = nb.m("MAXIMUM", h, h3)
+        rn = nb.sep(nb.mix(use3, rn, rn3))[0]
+        lo = nb.sep(nb.mix(use3, lo, lo3))[0]
+    else:
+        h = nb.m("MULTIPLY", X, 0.0)
+        rn = nb.m("ADD", h, 1.0)
+        lo = h
+
+    # rivulets: thin wavy runs down the glass, only in some columns, broken along their length
+    cols = 7.0 if near else 3.0
+    wob = nb.noise(vec=P, dims="3D", scale=2.2, detail=2.0)[0]
+    u = nb.m("ADD", nb.m("MULTIPLY", X, cols), nb.m("MULTIPLY", wob, 1.3))
+    ucol = nb.m("FLOOR", u)
+    width = nb.m("MULTIPLY_ADD", nb.white(w=nb.m("ADD", ucol, 3.1))[0], 0.02 if near else 0.006, 0.012 if near else 0.004)
+    d = nb.m("DIVIDE", nb.m("ABSOLUTE", nb.m("SUBTRACT", nb.m("FRACT", u), 0.5)), width)
+    run = nb.m("SQRT", nb.m("MAXIMUM", nb.m("SUBTRACT", 1.0, nb.m("MULTIPLY", d, d)), 0.0))
+    seg = nb.noise(vec=nb.comb(ucol, 0.0, nb.m("MULTIPLY", Z, 1.3)), dims="3D", scale=1.0, detail=1.0)[0]
+    gate = nb.m("MULTIPLY", nb.m("GREATER_THAN", nb.white(w=ucol)[0], 0.55 if near else 0.35),
+                nb.m("GREATER_THAN", seg, 0.5))
+    run = nb.m("MULTIPLY", run, gate)
+    use_run = nb.m("GREATER_THAN", run, h)
+    rn = nb.sep(nb.mix(use_run, rn, nb.m("SUBTRACT", 1.0, run)))[0]
+    lo = nb.sep(nb.mix(use_run, lo, (0.5, 0.5, 0.5, 1.0)))[0]
+    h = nb.m("MAXIMUM", h, run)
+    wet = nb.m("GREATER_THAN", h, 0.001)
+
+    bump = nb.node("ShaderNodeBump")
+    bump.inputs["Strength"].default_value = 0.8
+    bump.inputs["Distance"].default_value = 0.003 if near else 0.002
+    nb.link(bump.inputs["Height"], h)
+    # clear core, darker refracting rim
+    rim = nb.m("MULTIPLY", nb.m("MAXIMUM", nb.m("SUBTRACT", rn, 0.55), 0.0), 2.2)
+    rim = nb.m("MINIMUM", rim, 1.0)
+    tint = nb.mix(nb.m("MULTIPLY", rim, wet), "#e9edf1", "#6f7883")
+    core = nb.node("ShaderNodeBsdfTransparent")
+    nb.link(core.inputs[0], tint)
+    glow = nb.emission("#c9d0d8", nb.m("MULTIPLY", nb.m("MULTIPLY", wet, nb.m("SUBTRACT", 1.0, rim)),
+                                       nb.m("MULTIPLY_ADD", lo, 0.22, 0.06)))
+    add = nb.node("ShaderNodeAddShader")
+    nb.link(add.inputs[0], core.outputs[0])
+    nb.link(add.inputs[1], glow)
+    gl = nb.node("ShaderNodeBsdfGlossy")
+    gl.inputs["Roughness"].default_value = 0.04
+    nb.link(gl.inputs["Normal"], bump.outputs[0])
+    fr = nb.node("ShaderNodeFresnel")
+    fr.inputs["IOR"].default_value = 1.6
+    nb.link(fr.inputs["Normal"], bump.outputs[0])
+    drop = nb.node("ShaderNodeMixShader")
+    nb.link(drop.inputs[0], fr.outputs[0])
+    nb.link(drop.inputs[1], add.outputs[0])
+    nb.link(drop.inputs[2], gl.outputs[0])
+    # the dry glass: clear with a light mist
+    clear = nb.node("ShaderNodeBsdfTransparent")
+    clear.inputs[0].default_value = hex_lin("#dfe3e8" if near else "#d3d8de")
+    fog = nb.emission("#b9c0c8", 1.0)
+    dry = nb.node("ShaderNodeMixShader")
+    dry.inputs[0].default_value = 0.06 if near else 0.12
+    nb.link(dry.inputs[1], clear.outputs[0])
+    nb.link(dry.inputs[2], fog)
+    mix = nb.node("ShaderNodeMixShader")
+    nb.link(mix.inputs[0], wet)
+    nb.link(mix.inputs[1], dry.outputs[0])
+    nb.link(mix.inputs[2], drop.outputs[0])
+    nb.output(mix.outputs[0])
+    return m
+
+
+def make_rain_curtain(name, spacing, length, density, strength):
+    """Falling rain seen against the sky: thin, slightly slanted streaks on a camera-only plane.
+    `spacing` and `length` are in metres on the plane, so farther curtains use bigger numbers."""
+    m = bpy.data.materials.new(name)
+    nb = NB(m)
+    tc = nb.node("ShaderNodeTexCoord")
+    X, _, Z = nb.sep(tc.outputs["Object"])
+    u = nb.m("DIVIDE", nb.m("ADD", X, nb.m("MULTIPLY", Z, 0.1)), spacing)        # a little wind slant
+    col = nb.m("FLOOR", u)
+    r1 = nb.white(w=col)[0]
+    r2 = nb.white(w=nb.m("ADD", col, 7.7))[0]
+    v = nb.m("ADD", nb.m("DIVIDE", Z, length), nb.m("MULTIPLY", r1, 13.0))
+    seg = nb.m("FLOOR", v)
+    keep = nb.m("LESS_THAN", nb.white(vec=nb.comb(col, seg, 0.0), dims="3D")[0], density)
+    along = nb.m("FRACT", v)
+    fade = nb.m("MULTIPLY", nb.m("LESS_THAN", along, 0.55), nb.m("SINE", nb.m("MULTIPLY", along, math.pi / 0.55)))
+    x = nb.m("ABSOLUTE", nb.m("SUBTRACT", nb.m("FRACT", u), nb.m("MULTIPLY_ADD", r2, 0.6, 0.2)))
+    line = nb.m("MAXIMUM", nb.m("SUBTRACT", 1.0, nb.m("DIVIDE", x, 0.06)), 0.0)
+    a = nb.m("MULTIPLY", nb.m("MULTIPLY", line, fade), nb.m("MULTIPLY", keep, strength))
+    t = nb.node("ShaderNodeBsdfTransparent")
+    e = nb.emission("#dfe4ea", 1.0)
+    mix = nb.node("ShaderNodeMixShader")
+    nb.link(mix.inputs[0], a)
+    nb.link(mix.inputs[1], t.outputs[0])
+    nb.link(mix.inputs[2], e)
+    nb.output(mix.outputs[0])
+    m.blend_method = "BLEND"
+    return m
+
+
+def apply_weather():
+    """Rain day lights and glass: no sun, a cool flat window fill, the office lights on and the
+    desk lamp a little brighter as the warm accent."""
+    near = VARIANT == "tier3"
+    set_mat("window_glass", make_rain_glass(near))
+    wy = WIN3_Y if near else ROOM_Y1
+    for k, (dy, spacing, length, dens, strength) in enumerate(
+            [(1.5, 0.05, 0.5, 0.35, 0.22), (5.0, 0.12, 1.4, 0.35, 0.18), (14.0, 0.35, 4.0, 0.3, 0.14)]
+            if near else [(2.0, 0.12, 1.2, 0.35, 0.22), (8.0, 0.35, 3.5, 0.3, 0.16)]):
+        p = plane_xz(f"rain_curtain{k}", 2 * ROOM_X + 4 * dy, CEIL + 2.5 * dy, (0, wy + dy, CEIL / 2),
+                     make_rain_curtain(f"rain_curtain{k}", spacing, length, dens, strength), collection="Weather")
+        camera_only(p)
+    if near:
+        tune_lights({"window_fill": (None, "#c6d1de", 440.0), "panel_light": (0.95, "#eef1f6", None),
+                     "hero_key": (0.8, "#e6ecf5", None), "hero_rim": (0.7, "#cfd8e6", None),
+                     "lamp_light": (1.5, None, None)})
+    else:
+        # the windows are far away here, so the day mostly shows in the light: greyer and duller
+        tune_lights({"window_fill": (0.5, "#b9c0c9", None), "panel_light": (0.72, "#eceef1", None),
+                     "hero_key": (0.55, "#e4e6ea", None), "hero_rim": (0.5, "#cfd5de", None),
+                     "lamp_light": (1.8, None, None)})
+        set_mat("light_panel", mat_emit("ceiling_panel_rain", "#eef0f3", 1.35))
+
+
+# ---------------------------------------------------------------------------
+# Intro camera move (--dolly): CAM_wide -> CAM_main on the tier1 mid desk, rendered as PNG
+# frames to OUT_DIR/dolly/0001.png ... for ffmpeg. The first frame is CAM_wide exactly (the
+# chair in place, as in wide.png); the last is CAM_main exactly (the chair gone, as in desk.png).
+# ---------------------------------------------------------------------------
+def smoothstep(t):
+    t = min(max(t, 0.0), 1.0)
+    return t * t * (3 - 2 * t)
+
+
+def dolly_pose(t, p0, p1, q0, q1):
+    """Camera location, rotation and lens at t in [0, 1]. The position is gently eased (a blend
+    of linear and smoothstep, so it neither jerks into motion nor crawls); the rotation is a
+    full ease-in-out slerp."""
+    s = t + DOLLY_EASE * (smoothstep(t) - t)
+    return p0.lerp(p1, s), q0.slerp(q1, smoothstep(t)), 30.0 + 5.0 * s
+
+
+# The hero chair rolls back out of the cubicle and away to the right, turning as it goes,
+# over the first CHAIR_END of the move: a quadratic Bezier in XY from its place.
+CHAIR_PATH = ((0.16, -0.78), (0.22, -1.18), (0.68, -1.32))
+CHAIR_TURN = (-14.0, -58.0)
+CHAIR_END = 0.72
+
+
+def chair_pose(t):
+    c = smoothstep(t / CHAIR_END)
+    (ax, ay), (bx, by), (cx, cy) = CHAIR_PATH
+    x = (1 - c) ** 2 * ax + 2 * (1 - c) * c * bx + c * c * cx
+    y = (1 - c) ** 2 * ay + 2 * (1 - c) * c * by + c * c * cy
+    return (x, y, 0.0), math.radians(CHAIR_TURN[0] + (CHAIR_TURN[1] - CHAIR_TURN[0]) * c)
+
+
+def run_dolly(cam_main, cam_wide, top, bot, hero_chair):
+    q0 = cam_wide.rotation_euler.to_quaternion()
+    q1 = cam_main.rotation_euler.to_quaternion()
+    p0, p1 = cam_wide.location.copy(), cam_main.location.copy()
+    cd = bpy.data.cameras.new("CAM_dolly")
+    cd.sensor_width = 36.0
+    cd.sensor_fit = "AUTO"
+    cd.clip_start = 0.05
+    cd.clip_end = 3000.0
+    cam = bpy.data.objects.new("CAM_dolly", cd)
+    cam.rotation_mode = "QUATERNION"
+    scene.collection.objects.link(cam)
+    scene.camera = cam
+    r = scene.render
+    r.resolution_x, r.resolution_y = DOLLY_W, DOLLY_W * 16 // 9
+    r.resolution_percentage = 100
+    r.use_persistent_data = True          # keep the BVH between frames: only the camera and the chair move
+    scene.cycles.seed = 0                 # a fixed noise pattern, so the denoised frames don't shimmer
+    scene.cycles.use_animated_seed = False
+    hero_chair.hide_render = hero_chair.hide_viewport = False
+    out = os.path.join(OUT_DIR, "dolly")
+    os.makedirs(out, exist_ok=True)
+    ok = True
+    t_all = time.time()
+    for i in range(DOLLY_FRAMES):
+        t = i / (DOLLY_FRAMES - 1)
+        loc, rot, lens = dolly_pose(t, p0, p1, q0, q1)
+        if i == 0:
+            loc, rot, lens = p0, q0, 30.0
+        elif i == DOLLY_FRAMES - 1:
+            loc, rot, lens = p1, q1, 35.0
+        cam.location, cam.rotation_quaternion, cd.lens = loc, rot, lens
+        cloc, crot = chair_pose(t)
+        hero_chair.location = cloc
+        hero_chair.rotation_euler = (0, 0, crot)
+        # the player is in the chair for the gameplay view
+        hero_chair.hide_render = t >= CHAIR_END
+        bpy.context.view_layer.update()
+        if i in (0, DOLLY_FRAMES - 1):
+            exp = EXPECTED["CAM_wide" if i == 0 else "CAM_main"]
+            for name, vals in measure(cam, [top, bot]).items():
+                dev = max(abs(a - b) for a, b in zip(vals, exp[name]))
+                print(f"dolly frame {i + 1} {name}: " + " / ".join(f"{v:5.2f}" for v in vals) + f"  max dev {dev:.2f}")
+                ok &= dev <= exp["tol"]
+            for s in (top, bot):
+                frac, blk = occlusion(cam, s)
+                ok &= frac == 0
+                print(f"dolly frame {i + 1} occlusion {s.name}: {frac * 100:.0f}% hidden {blk}")
+        path = os.path.join(out, f"{i + 1:04d}.png")
+        if os.path.exists(path):
+            print(f"dolly frame {i + 1}/{DOLLY_FRAMES} exists, skipped")
+            continue
+        r.filepath = path
+        t0 = time.time()
+        bpy.ops.render.render(write_still=True)
+        done = time.time() - t_all
+        print(f"DOLLY frame {i + 1}/{DOLLY_FRAMES} t={t:.3f} lens {lens:.2f} in {time.time() - t0:.1f}s "
+              f"(elapsed {done / 60:.1f} min)", flush=True)
+    print(f"Dolly done in {(time.time() - t_all) / 60:.1f} min: {out}  "
+          f"({DOLLY_FRAMES} frames, {DOLLY_FRAMES / DOLLY_FPS:.2f} s at {DOLLY_FPS} fps)")
+    print(f"Encode: ffmpeg -y -framerate {DOLLY_FPS} -i {out}/%04d.png -c:v libx264 -preset veryslow -crf 22 "
+          "-pix_fmt yuv420p -movflags +faststart -an assets/intro.mp4")
+    return ok
+
+
+def check_clear(cam_ob, rects, objs, below=None, strips=None):
+    """Project every vertex in front of the hero screen plane; report any that land inside a hero
+    screen rectangle. With `below`, also require every vertex to sit lower in frame than that %,
+    except (with `strips`, (left %, right %)) in the side strips outside the screens. Text objects
+    are checked through their evaluated meshes."""
+    bad, top_most, top_ob = 0, 100.0, ""
+    dg = bpy.context.evaluated_depsgraph_get()
+    for ob in objs:
+        if ob.type not in ("MESH", "FONT"):
+            continue
+        ev = ob.evaluated_get(dg)
+        me = ev.to_mesh()
+        mw = ev.matrix_world
+        for vtx in me.vertices:
             w = mw @ vtx.co
             p = world_to_camera_view(scene, cam_ob, w)
             fx, fy = p.x * 100, (1 - p.y) * 100
-            if 0 <= fx <= 100 and fy < top_most:
+            in_strip = strips is not None and (fx <= strips[0] or fx >= strips[1])
+            if 0 <= fx <= 100 and fy < top_most and not in_strip:
                 top_most, top_ob = fy, ob.name
             if w.y >= SCREEN_TOP_C[1] and below is None:
                 continue
@@ -1721,9 +2301,11 @@ def check_clear(cam_ob, rects, objs, below=None):
                 if l < fx < r and t_ < fy < b:
                     bad += 1
                     break
+        ev.to_mesh_clear()
     msg = f"clearance {cam_ob.name}: {bad} vertices of {len(objs)} variant objects inside the hero screen rectangles"
     if below is not None:
-        msg += f"; highest point at {top_most:.2f}% on {top_ob} (must be below {below}%)"
+        msg += (f"; highest point{' outside the side strips' if strips else ''} at {top_most:.2f}% on {top_ob} "
+                f"(must be below {below}%)")
         bad += top_most <= below
     print(msg + ("  OK" if bad == 0 else "  FAIL"))
     return bad == 0
@@ -1842,10 +2424,10 @@ def verify(cams, screens):
 def main():
     t0 = time.time()
     build_materials()
-    sky, amb_col, amb_str, tower_kw = tod_env()
+    sky, amb_col, amb_str, tower_kw = weather_env() if WEATHER else tod_env()
     make_world(sky, amb_col, amb_str)
     if tower_kw is not None:
-        M["tower"] = make_tower("tower_" + TOD, **tower_kw)
+        M["tower"] = make_tower("tower_" + (WEATHER or LIGHT_TOD), **tower_kw)
     if VARIANT == "tier3":
         build_room(Y1=WIN3_Y, pillar=False)
     else:
@@ -1861,11 +2443,14 @@ def main():
         build_bg_desks(chair_src)
         if VARIANT == "fired":
             variant_fired()
+    if FUNDED:
+        variant_funded()
     apply_tod()
     build_city()
     cam_main, cam_wide = build_cameras()
     setup_render()
-    print(f"Scene built in {time.time() - t0:.1f}s; variant {VARIANT}; tod {TOD}; objects: {len(bpy.data.objects)}")
+    print(f"Scene built in {time.time() - t0:.1f}s; variant {VARIANT}; tod {TOD}; funded {FUNDED}; "
+          f"weather {WEATHER or 'clear'}; objects: {len(bpy.data.objects)}")
 
     bpy.context.view_layer.update()
     ok = verify([cam_main, cam_wide], [top, bot])
@@ -1873,6 +2458,10 @@ def main():
         rects = measure(cam_main, [top, bot])
         extra = list(COLLS["Fired" if VARIANT == "fired" else "Variant"].all_objects)
         ok &= check_clear(cam_main, rects, extra, below=78.4 if VARIANT == "fired" else None)
+    if FUNDED:
+        # the pass-moment props: below the bottom screen (78.4%) or in the side strips (x < 11% or > 89%)
+        rects = measure(cam_main, [top, bot])
+        ok &= check_clear(cam_main, rects, list(COLLS["Funded"].all_objects), below=78.4, strips=(11.0, 89.0))
 
     jobs = {"main": (cam_main, f"desk{SUFFIX}.png", False), "wide": (cam_wide, f"wide{SUFFIX}.png", True)}
     os.makedirs(OUT_DIR, exist_ok=True)
@@ -1882,6 +2471,11 @@ def main():
         exec(compile(open(HOOK).read(), HOOK, "exec"), g)
         if g["SKIP_RENDER"]:
             return
+    if DOLLY:
+        ok &= run_dolly(cam_main, cam_wide, top, bot, hero_chair)
+        if not ok:
+            print("WARNING: a screen check failed (rectangles, occlusion or variant clearance)")
+        return
     for key in CAMS:
         cam_ob, fname, chair_on = jobs[key]
         # The player sits in the chair for the gameplay view, so it is only shown in the wide intro shot.
