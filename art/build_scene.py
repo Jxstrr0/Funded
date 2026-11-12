@@ -6,11 +6,17 @@ both backdrops (CAM_main -> desk.png, CAM_wide -> wide.png) with Cycles on CPU.
     blender -b --factory-startup -P art/build_scene.py -- [--out DIR] [--samples N] [--preview]
                                                            [--cams main,wide] [--variant tier1|tier2|tier3|fired]
                                                            [--tod am|mid|pm] [--funded] [--weather rain]
-                                                           [--dolly [--dolly-res W] [--dolly-frames N]]
+                                                           [--dolly [--dolly-res W] [--dolly-frames N]] [--old-room]
 
 --variant picks the gameplay desk (CAM_main) for each career stage: tier1 (back
 row, the default and the original look), tier2 (mid-floor with wing monitors),
 tier3 (window seat over the city) or fired (tier1 desk with a packed box).
+
+The tier1 room (tier1, fired, and their --tod / --funded / --weather / --dolly
+renders) opens onto the city: no pillar, no window soffit and no last row of
+desks, so the skyline shows above the back partition on both sides. Its towers
+use CITY_TOWERS (less haze, darker facades, more lit windows) for each light.
+--old-room brings back the original closed-in back row. tier2/tier3 are unchanged.
 
 --tod picks the time of day for tier1..tier3 (the game crossfades the desk from
 the opening bell to the close): am (cool, soft morning), mid (the default) or pm
@@ -99,6 +105,11 @@ if WEATHER and (VARIANT not in ("tier1", "tier2", "tier3") or TOD != "mid"):
     raise SystemExit("--weather rain works with --variant tier1|tier2|tier3 at mid time of day only")
 if DOLLY and (VARIANT != "tier1" or TOD != "mid" or WEATHER or FUNDED):
     raise SystemExit("--dolly renders the plain tier1 desk at mid time of day")
+# The tier1 room (tier1, fired and their funded / rain / dolly renders) opens onto the city: no
+# pillar, no window soffit and no last row of desks, so the skyline shows above the back
+# partition. --old-room brings back the original closed-in back row.
+OLD_ROOM = "--old-room" in argv
+CITY_VIEW = VARIANT in ("tier1", "fired") and not OLD_ROOM
 # The light used: the funded desk is lit like --tod pm.
 LIGHT_TOD = "pm" if FUNDED else TOD
 # Variants and times of day only change the gameplay view, so they render CAM_main unless asked otherwise.
@@ -969,7 +980,7 @@ ROOM_Y0, ROOM_Y1 = -6.0, 9.5
 CEIL = 3.0
 
 
-def build_room(Y1=ROOM_Y1, pillar=True):
+def build_room(Y1=ROOM_Y1, pillar=True, soffit=True):
     """Office shell. Y1 is the window wall (tier3 brings it right up behind the hero desk)."""
     box("floor", (2 * ROOM_X, Y1 - ROOM_Y0, 0.1), (0, (ROOM_Y0 + Y1) / 2, -0.05), M["carpet"])
     box("ceiling", (2 * ROOM_X, Y1 - ROOM_Y0, 0.1), (0, (ROOM_Y0 + Y1) / 2, CEIL + 0.05), M["ceiling"])
@@ -988,7 +999,8 @@ def build_room(Y1=ROOM_Y1, pillar=True):
     g = plane_xz("window_glass", 2 * ROOM_X, CEIL, (0, wy + 0.02, CEIL / 2), M["glass"])
     g.visible_shadow = False
     box("sill", (2 * ROOM_X, 0.35, 0.22), (0, wy - 0.1, 0.11), M["skirting"])
-    box("soffit", (2 * ROOM_X, 0.6, 0.28), (0, wy - 0.25, CEIL - 0.14), M["ceiling"])
+    if soffit:
+        box("soffit", (2 * ROOM_X, 0.6, 0.28), (0, wy - 0.25, CEIL - 0.14), M["ceiling"])
     box("transom", (2 * ROOM_X, 0.08, 0.06), (0, wy, 2.35), M["mullion"])
     x = -ROOM_X
     while x <= ROOM_X + 0.01:
@@ -1547,6 +1559,20 @@ DUSK_SKY = [(0.0, "#f3a46c"), (0.6, "#1d2a5c"), (0.07, "#eaa38e"), (0.17, "#b98f
 AM_SKY = [(0.0, "#c9d6e6"), (0.45, "#7f9cc6"), (0.04, "#e3e8ee"), (0.14, "#bccbe0")]
 PM_SKY = [(0.0, "#f2b27e"), (0.5, "#4d64a0"), (0.05, "#f0b896"), (0.13, "#dba7a2"), (0.26, "#9c97bf")]
 DAY3_SKY = [(0.0, "#c3d0e2"), (0.6, "#4a73b0"), (0.06, "#dfe1e6"), (0.2, "#a2bbdb")]
+
+
+# The tier1 city view shows the skyline through the desk's side strips and over the partitions,
+# so its towers get less haze, darker facades and more lit windows than the tier2 room's.
+CITY_TOWERS = {
+    "mid": dict(lit_base=0.74, haze_col="#b9c8dc", tones=("#1c2a43", "#34476a"),
+                glass_cols=("#16223a", "#3a5074"), haze_start=80.0, haze_len=420.0),
+    "am": dict(lit_base=0.8, haze_col="#cdd8e6", tones=("#21314c", "#3e5276"),
+               glass_cols=("#1b2a44", "#4a5f84"), haze_start=70.0, haze_len=360.0),
+    "pm": dict(lit_base=0.6, haze_col="#e2b9a4", tones=("#262a46", "#454a6c"),
+               glass_cols=("#25273f", "#6c5f80"), haze_start=70.0, haze_len=400.0),
+    "rain": dict(lit_base=0.68, haze_col="#a9b0b9", tones=("#2a3442", "#434e5d"),
+                 glass_cols=("#2c3746", "#4f5b6b"), haze_start=30.0, haze_len=260.0),
+}
 
 
 def tod_env():
@@ -2425,13 +2451,15 @@ def main():
     t0 = time.time()
     build_materials()
     sky, amb_col, amb_str, tower_kw = weather_env() if WEATHER else tod_env()
+    if CITY_VIEW:
+        tower_kw = CITY_TOWERS[WEATHER or LIGHT_TOD]
     make_world(sky, amb_col, amb_str)
     if tower_kw is not None:
         M["tower"] = make_tower("tower_" + (WEATHER or LIGHT_TOD), **tower_kw)
     if VARIANT == "tier3":
         build_room(Y1=WIN3_Y, pillar=False)
     else:
-        build_room(pillar=VARIANT != "tier2")
+        build_room(pillar=VARIANT != "tier2" and not CITY_VIEW, soffit=not CITY_VIEW)
     chair_src = build_chair_source()
     top, bot = build_hero_desk()
     hero_chair = chair_instance("hero_chair", (0.16, -0.78, 0), math.radians(-14), chair_src, collection="Hero")
@@ -2440,7 +2468,7 @@ def main():
     elif VARIANT == "tier3":
         variant_tier3()
     else:
-        build_bg_desks(chair_src)
+        build_bg_desks(chair_src, rows=(1.75, 3.55, 5.35) if CITY_VIEW else (1.75, 3.55, 5.35, 7.15))
         if VARIANT == "fired":
             variant_fired()
     if FUNDED:
