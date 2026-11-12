@@ -38,6 +38,7 @@ Read this at the start of every session. The full design spec is `docs/HANDOFF.m
 - Stage 4 done: Reputation (`js/meta.js`, 10 per day survived + 1 per $50 of the best green day + 50 for a pass), a perk shop with the handoff's four perks (Thick Skin 60, Newswire 80, Level 2 120, Mulligan 150, all one-time buys applied from the next eval), and the guided training day (`js/tutorial.js`), which runs first and can be replayed from the title.
 - Stage 5 done: the futures tier (`TIER2` in `js/config.js`). The owner approved the design: a $50k account, one fictional contract (`MRX`, 0.25 ticks at $12.50, so $50 a point), whole contracts with sizes 1 / 2 / MAX (6), and rules scaled from Tier 1 (+$3,000 target, −$1,500 daily, $3,000 trailing, floor locks at $50k). At MAX the daily limit goes in about a 0.5% move (Tier 1: about 0.9%). A career climbs the ladder: passing Tier 1 promotes you straight into a Tier 2 eval (saved, with perks carried and a fresh Mulligan), and a firing at any tier sends the next career back to Tier 1.
 - Audio done (part of stage 7): ElevenLabs sound effects, ambience and menu music in `assets/audio/` (`js/audio.js`, volumes in `AUDIO` in config). About 1,400 of the approved 6,000 credits were spent.
+- Visit counts: a cookieless Cloudflare Web Analytics beacon at the end of `index.html` (owner's request, 2026-11-12), shared with the studio's zone-wide analytics site.
 - Next: **stage 6**, the options tier. Its arcade design is still open (handoff §12), so ask the owner first.
 - Update this section when a stage lands.
 
