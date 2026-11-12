@@ -2,7 +2,9 @@
 
 // Firm rules for Tier 1 ($25k stock eval).
 export const TIER1 = {
+  id: 'tier1',
   name: 'Tier 1 · $25k Stock Eval',
+  short: '$25k stocks',
   startBalance: 25000,
   profitTarget: 1500,          // +6%: end-of-day balance must reach start + this
   dailyLossLimit: 750,         // 3% of the day's starting balance, open P&L counts
@@ -17,7 +19,44 @@ export const TIER1 = {
     { label: 'MAX', share: 1 },
   ],
   defaultSizeIndex: 0,
+  next: 'tier2',               // passing this eval promotes you to this tier
 };
+
+// Firm rules for Tier 2 ($50k futures eval). Same shape as Tier 1, scaled to
+// $50k. One fictional contract with a fixed dollar value per tick, traded in
+// whole contracts. More leverage than Tier 1: at MAX size the daily loss
+// limit goes in about a 0.5% move (Tier 1: about 0.9%).
+export const TIER2 = {
+  id: 'tier2',
+  name: 'Tier 2 · $50k Futures Eval',
+  short: '$50k futures',
+  startBalance: 50000,
+  profitTarget: 3000,
+  dailyLossLimit: 1500,
+  trailingDrawdown: 3000,
+  floorLocksAt: 50000,
+  minTradingDays: 3,
+  evalDays: 5,
+  contract: {
+    symbol: 'MRX',             // fictional "Meridian Index" future
+    tickSize: 0.25,            // smallest price step
+    tickValue: 12.5,           // $ per tick per contract
+    pointValue: 50,            // $ per 1.00 move per contract (tickValue / tickSize)
+    priceMin: 900,
+    priceMax: 1300,
+    volScale: 0.85,            // index futures move a bit less than single stocks
+  },
+  maxContracts: 6,             // net position cap, long or short
+  sizes: [
+    { label: '1', contracts: 1 },
+    { label: '2', contracts: 2 },
+    { label: 'MAX', share: 1 },
+  ],
+  defaultSizeIndex: 0,
+  next: null,                  // top of the ladder for now (options arrive in stage 6)
+};
+
+export const TIERS = { tier1: TIER1, tier2: TIER2 };
 
 // One trading day.
 export const SESSION = {
@@ -90,7 +129,7 @@ export const PERKS = [
   { id: 'thickSkin', name: 'Thick Skin', cost: 60, desc: '+10% daily loss buffer.', lossBuffer: 0.10 },
   { id: 'newswire', name: 'Newswire', cost: 80, desc: 'Headlines arrive 5 seconds early.', leadSeconds: 5 },
   { id: 'level2', name: 'Level 2', cost: 120, desc: 'See the order book: bid and ask pressure.' },
-  { id: 'mulligan', name: 'Mulligan', cost: 150, desc: 'Survive one rule break per eval. You are flattened and the desk locks for the day.', uses: 1, floorRoom: 750 },
+  { id: 'mulligan', name: 'Mulligan', cost: 150, desc: 'Survive one rule break per eval. You are flattened and the desk locks for the day.', uses: 1, floorRoomDailyLimits: 1 },
 ];
 
 // Reputation is earned every run, even failed ones.

@@ -68,3 +68,27 @@ test('day without trades does not count; impossible min days fails', () => {
   const d = newDay(run); // day 3, 0 counted, 2 days left after -> impossible
   assert.equal(closeDay(run, d).outcome, 'failMinDays');
 });
+
+test('futures: whole contracts, fixed cap, $ per point', async () => {
+  const { TIER2 } = await import('../js/config.js');
+  const { openPnl, applyMulligan } = await import('../js/rules.js');
+  const run = newRun(TIER2); const day = newDay(run, TIER2);
+  assert.equal(run.tier, 'tier2');
+  assert.equal(run.floor, 47000);
+  assert.equal(day.mult, 50);
+  assert.equal(orderDelta(day, 1, TIER2.sizes[0], 1000), 1);
+  assert.equal(orderDelta(day, 1, TIER2.sizes[2], 1000), 6);
+  day.qty = 5; day.avg = 1000;
+  assert.equal(orderDelta(day, 1, TIER2.sizes[1], 1000), 1);   // only up to the 6-contract cap
+  assert.equal(orderDelta(day, -1, TIER2.sizes[2], 1000), -6);  // MAX sell is a full 6, long 5 -> short 1
+  assert.equal(openPnl(day, 1002.5), 5 * 2.5 * 50);             // +2.5 points x 5 contracts
+  const f = applyFill(5, 1000, -5, 999.75, 50);
+  assert.equal(f.realized, -5 * 0.25 * 50);                     // one tick against = -$12.50 a contract
+  // Max size: the daily loss limit goes in about a 0.5% move at 1000.
+  day.qty = 6;
+  const snap = snapshot(run, day, 1000 - TIER2.dailyLossLimit / (6 * 50), TIER2);
+  assert.equal(snap.breach, 'dailyLoss');
+  // Mulligan room scales with the tier's daily limit.
+  const m = applyMulligan({ ...run, mulligans: 1 }, 46500, TIER2);
+  assert.equal(m.floor, 45000);
+});

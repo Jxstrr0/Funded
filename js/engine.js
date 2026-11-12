@@ -29,7 +29,7 @@ function gauss(rng) {
 }
 
 const pick = (rng, arr) => arr[Math.floor(rng() * arr.length)];
-const round2 = (x) => Math.round(x * 100) / 100;
+const roundTo = (x, step) => Math.round(Math.round(x / step) * step * 100) / 100;
 
 function pickRegime(rng, regimes, exclude) {
   const names = Object.keys(regimes).filter((n) => n !== exclude);
@@ -43,10 +43,13 @@ function pickRegime(rng, regimes, exclude) {
 }
 
 // Largest instant jump (as a fraction of price) so that a Max position loses
-// at most shockCapShareOfDailyLimit of the daily loss limit.
-export function shockCapPct(dayStartBalance, rules = TIER1, engine = ENGINE) {
-  const buyingPower = rules.buyingPowerMultiplier * dayStartBalance;
-  return (engine.news.shockCapShareOfDailyLimit * rules.dailyLossLimit) / buyingPower;
+// at most shockCapShareOfDailyLimit of the daily loss limit. For futures the
+// Max position's value depends on the price, so pass it.
+export function shockCapPct(dayStartBalance, rules = TIER1, engine = ENGINE, price = 0) {
+  const maxNotional = rules.contract
+    ? rules.maxContracts * rules.contract.pointValue * price
+    : rules.buyingPowerMultiplier * dayStartBalance;
+  return (engine.news.shockCapShareOfDailyLimit * rules.dailyLossLimit) / maxNotional;
 }
 
 function scheduleNews(rng, session, engine) {
@@ -70,13 +73,20 @@ export function generateDay({ seed, dayStartBalance = TIER1.startBalance, sessio
   const rng = mulberry32(seed);
   const tpc = session.ticksPerCandle;
   const nTicks = session.candles * tpc;
+  // Futures trade one fixed contract; stocks pick a ticker and a price level.
+  const c = rules.contract;
+  const step = c ? c.tickSize : 0.01;
   let ticker = pick(rng, TICKERS);
-  let open = round2(engine.priceMin + rng() * (engine.priceMax - engine.priceMin));
+  const u0 = rng();
+  let open = c
+    ? roundTo(c.priceMin + u0 * (c.priceMax - c.priceMin), step)
+    : roundTo(engine.priceMin + u0 * (engine.priceMax - engine.priceMin), step);
+  if (c) ticker = c.symbol;
   if (script?.ticker) ticker = script.ticker;
   if (script?.open) open = script.open;
 
   // News: times known up front, headline/direction revealed when they land.
-  const cap = shockCapPct(dayStartBalance, rules, engine);
+  const cap = shockCapPct(dayStartBalance, rules, engine, open);
   const n = engine.news;
   const used = new Set();
   let news = scheduleNews(rng, session, engine).map((candle) => {
@@ -100,7 +110,7 @@ export function generateDay({ seed, dayStartBalance = TIER1.startBalance, sessio
   }
   const newsAt = new Map(news.map((e) => [e.tick, e]));
 
-  const sigma = (engine.dailyVol / Math.sqrt(nTicks)) * (script?.volScale ?? 1);
+  const sigma = (engine.dailyVol / Math.sqrt(nTicks)) * (script?.volScale ?? 1) * (c?.volScale ?? 1);
   const driftPerTick = engine.trendMovePerCandle / tpc;
   const ticks = new Float64Array(nTicks);
   const regimes = [];
@@ -123,9 +133,11 @@ export function generateDay({ seed, dayStartBalance = TIER1.startBalance, sessio
     if (ev) {
       // Instant capped jump, then follow-through. Noise on this tick is suppressed
       // so the jump itself stays within the cap.
-      logp += Math.log(1 + ev.jump);
+      // Futures: the cap holds in points (dollars per contract), whatever the price has done since the open.
+      const jump = c ? (ev.jump * open) / Math.exp(logp) : ev.jump;
+      logp += Math.log(1 + jump);
       follow = { left: ev.followTicks, total: ev.followTicks, perTick: Math.log(1 + ev.followTotal) / ev.followTicks };
-      ticks[i] = Math.max(1, round2(Math.exp(logp)));
+      ticks[i] = Math.max(1, roundTo(Math.exp(logp), step));
       continue;
     }
     if (follow && follow.left > 0) {
@@ -134,7 +146,7 @@ export function generateDay({ seed, dayStartBalance = TIER1.startBalance, sessio
       follow.left--;
     }
     logp += drift + sigma * u * R.vol * volMul * gauss(rng);
-    ticks[i] = Math.max(1, round2(Math.exp(logp)));
+    ticks[i] = Math.max(1, roundTo(Math.exp(logp), step));
   }
 
   return { seed, ticker, open, ticks, news, regimes };

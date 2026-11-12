@@ -1,5 +1,5 @@
 // Boot, intro, and the game state machine.
-import { TIER1, SESSION, PERKS, TUTORIAL } from './config.js';
+import { TIER1, TIERS, SESSION, PERKS, TUTORIAL } from './config.js';
 import { generateDay, candlesUpTo, hashSeed, bookAt } from './engine.js';
 import { newRun, newDay, applyFill, orderDelta, snapshot, closeDay, RULE_TEXT, effectiveRules, applyMulligan } from './rules.js';
 import { loadMeta, saveMeta, reputationFor, buyPerk, canBuy } from './meta.js';
@@ -37,6 +37,13 @@ let meta = loadMeta();
 const has = (perk) => !S.tutorial && S.run?.perks?.includes(perk);
 
 let chart;
+const tierOf = (run) => TIERS[run?.tier] || TIER1;
+
+/** Switch the active tier's rules (with the run's perks) and its size buttons. */
+function useRules(rules) {
+  RULES = rules;
+  ui.setSizes(RULES.sizes);
+}
 
 // ---------- helpers ----------
 
@@ -79,8 +86,8 @@ function persist(force = false) {
 
 function resumeSaved(data) {
   S.run = data.run;
-  RULES = effectiveRules(S.run.perks || []);
-  S.sizeIndex = data.sizeIndex ?? RULES.defaultSizeIndex;
+  useRules(effectiveRules(S.run.perks || [], tierOf(S.run)));
+  S.sizeIndex = Math.min(data.sizeIndex ?? RULES.defaultSizeIndex, RULES.sizes.length - 1);
   if (!data.live) { openDay(); return; }
   S.day = data.live.day;
   S.market = generateDay({ seed: hashSeed(S.run.seed, S.run.day), dayStartBalance: S.day.startBalance, rules: RULES });
@@ -104,7 +111,7 @@ function trade(side) {
   if (S.phase !== 'running' || !allowed(side > 0 ? 'buy' : 'sell')) return;
   if (S.day.locked) { sfx.denied(); ui.flashDenied('DESK LOCKED'); return; }
   const p = price();
-  const delta = orderDelta(S.day, side, RULES.sizes[S.sizeIndex].share, p);
+  const delta = orderDelta(S.day, side, RULES.sizes[S.sizeIndex], p);
   if (delta === 0) { sfx.denied(); ui.flashDenied('MAX SIZE'); setTimeout(() => (S.dirty = true), 500); return; }
   fill(delta, p);
   side > 0 ? sfx.buy() : sfx.sell();
@@ -119,7 +126,7 @@ function flatten() {
 }
 
 function fill(delta, p) {
-  const r = applyFill(S.day.qty, S.day.avg, delta, p);
+  const r = applyFill(S.day.qty, S.day.avg, delta, p, S.day.mult ?? 1);
   S.day.qty = r.qty;
   S.day.avg = r.avg;
   S.day.realized += r.realized;
@@ -155,7 +162,7 @@ function breach(rule) {
 
 function useMulligan(rule) {
   if (S.day.qty) {
-    const r = applyFill(S.day.qty, S.day.avg, -S.day.qty, price());
+    const r = applyFill(S.day.qty, S.day.avg, -S.day.qty, price(), S.day.mult ?? 1);
     S.day.qty = r.qty; S.day.avg = r.avg; S.day.realized += r.realized;
   }
   S.run = applyMulligan(S.run, S.day.startBalance + S.day.realized, RULES);
@@ -243,11 +250,13 @@ window.addEventListener('pagehide', pause);
 
 // ---------- flow ----------
 
-function startRun() {
+/** Start an eval. A new career starts at Tier 1 with the perks owned now. */
+function startRun(tierId = 'tier1', perks = meta.owned) {
   clearRun();
   endTutorial();
-  RULES = effectiveRules(meta.owned);
-  S.run = newRun(RULES, undefined, meta.owned);
+  useRules(effectiveRules(perks, TIERS[tierId]));
+  S.run = newRun(RULES, undefined, perks);
+  S.sizeIndex = RULES.defaultSizeIndex;
   openDay();
 }
 
@@ -270,12 +279,15 @@ function openDay() {
   const r = S.run;
   const counted = `${r.daysCounted} of ${RULES.minTradingDays}`;
   ui.showCard(`
-    <div class="eyebrow">Day ${r.day} of ${RULES.evalDays}</div>
+    <div class="eyebrow">${ui.esc(RULES.name.split(' · ')[0])} · Day ${r.day} of ${RULES.evalDays}</div>
     <h2>${ui.esc(S.market.ticker)} <span style="font-weight:500;color:rgba(250,249,245,.6)">opens $${S.market.open.toFixed(2)}</span></h2>
     <p>News at <b>${newsTimes()}</b>. Marked on the clock.</p>
+    ${RULES.contract && r.day === 1 ? `<p>Futures: you trade whole <b>contracts</b>. Every ${RULES.contract.tickSize.toFixed(2)} tick is <b>$${RULES.contract.tickValue.toFixed(2)}</b> a contract. Max is ${RULES.maxContracts}, and it moves fast.</p>` : ''}
     ${ui.rows([
       ['Balance', ui.money(r.balance)],
-      ['Buying power (3.33x)', ui.money(S.day.buyingPower)],
+      ...(RULES.contract
+        ? [['Contract', `${RULES.contract.symbol} · $${RULES.contract.pointValue} a point`], ['Max position', `${RULES.maxContracts} contracts`]]
+        : [[`Buying power (${RULES.buyingPowerMultiplier}x)`, ui.money(S.day.buyingPower)]]),
       ['Daily loss limit', ui.money(-RULES.dailyLossLimit)],
       ['Drawdown floor', ui.money(r.floor)],
       ['Target balance', ui.money(RULES.startBalance + RULES.profitTarget)],
@@ -351,6 +363,7 @@ function fire(rule) {
     <h1 class="fired">You're fired.</h1>
     <div class="rule-name">${ui.esc(t.name)}</div>
     <p>${ui.esc(t.detail(RULES))}</p>
+    ${careerNote()}
     ${ui.rows([
       ['Equity at the time', ui.money(snap.equity)],
       ['Day P&L', ui.signed(snap.dayPnl).text, ui.signed(snap.dayPnl).cls],
@@ -359,7 +372,7 @@ function fire(rule) {
     ])}
     <button class="cta" data-action="again">New eval</button>
     <button class="cta ghost" data-action="shop">Perk shop</button>
-  `, { again: startRun, shop: () => shop(startRun) });
+  `, { again: () => startRun(), shop: () => shop(() => startRun()) });
 }
 
 function evalOver(rule) {
@@ -371,6 +384,7 @@ function evalOver(rule) {
     <h1 class="fired">Not funded.</h1>
     <div class="rule-name">${ui.esc(t.name)}</div>
     <p>${ui.esc(t.detail(RULES))}</p>
+    ${careerNote()}
     ${ui.rows([
       ['Final balance', ui.money(S.run.balance)],
       ['Total P&L', ui.signed(S.run.balance - RULES.startBalance).text, ui.signed(S.run.balance - RULES.startBalance).cls],
@@ -379,13 +393,18 @@ function evalOver(rule) {
     ])}
     <button class="cta" data-action="again">New eval</button>
     <button class="cta ghost" data-action="shop">Perk shop</button>
-  `, { again: startRun, shop: () => shop(startRun) });
+  `, { again: () => startRun(), shop: () => shop(() => startRun()) });
+}
+
+function careerNote() {
+  return S.run.tier !== 'tier1' ? '<p style="font-size:3.2cqw">Your next career starts back at Tier 1. Rep and perks stay.</p>' : '';
 }
 
 function passed() {
   sfx.pass();
   const r = S.run;
   const rep = award(true);
+  if (RULES.next) return promoted(r, rep);
   ui.showCard(`
     <div class="eyebrow">Eval passed</div>
     <h1>Funded<span class="dot">.</span></h1>
@@ -398,8 +417,32 @@ function passed() {
     ])}
     <button class="cta" data-action="again">New eval</button>
     <button class="cta ghost" data-action="shop">Perk shop</button>
-    <div class="fine">The career ladder arrives in a later stage.</div>
-  `, { again: startRun, shop: () => shop(startRun) });
+    <div class="fine">Top of the ladder for now. The options desk opens in a later stage.</div>
+  `, { again: () => startRun(), shop: () => shop(() => startRun()) });
+}
+
+/** Passed a tier with another above it: the career moves up. Saved straight
+ * away, so a reload continues at the new tier's first day. */
+function promoted(r, rep) {
+  const next = TIERS[RULES.next];
+  const perks = r.perks;
+  const from = RULES;
+  S.run = newRun(effectiveRules(perks, next), undefined, perks);
+  persist(true);
+  ui.showCard(`
+    <div class="eyebrow">Eval passed · promoted</div>
+    <h1>Funded<span class="dot">.</span></h1>
+    <p>You passed ${ui.esc(from.name)} in ${r.history.length} days. The desk moves you up to <b>${ui.esc(next.name)}</b>.</p>
+    ${ui.rows([
+      ['Final balance', ui.money(r.balance)],
+      ['Total P&L', ui.signed(r.balance - from.startBalance).text, 'up'],
+      ['Next account', ui.money(next.startBalance)],
+      ['Next target', `+${ui.money(next.profitTarget)}`],
+      ...repRows(rep),
+    ])}
+    <button class="cta" data-action="go">Start ${ui.esc(next.short)}</button>
+    <div class="fine">Get fired up there and the next career starts at Tier 1.</div>
+  `, { go: () => { useRules(effectiveRules(perks, next)); S.sizeIndex = RULES.defaultSizeIndex; openDay(); } });
 }
 
 // ---------- reputation and perks ----------
@@ -440,7 +483,7 @@ function shop(back) {
 // ---------- tutorial ----------
 
 function startTutorial() {
-  RULES = TIER1;
+  useRules(TIER1);
   S.run = newRun(TIER1, TUTORIAL.seed, []);
   S.day = newDay(S.run, TIER1);
   S.market = generateDay({ seed: TUTORIAL.seed, script: TUTORIAL.script });
@@ -488,7 +531,7 @@ function finishTutorial(heldAtBell) {
     <p>${heldAtBell ? 'You held through the bell. In a real eval that ends your run on the spot.' : 'That\'s the job: trade the day, respect the rules, be flat by 16:00.'}</p>
     <p>Now the real thing: five days, +$1,500 target, no second chances.</p>
     <button class="cta" data-action="go">Start your eval</button>
-  `, { go: startRun });
+  `, { go: () => startRun() });
 }
 
 // ---------- boot ----------
@@ -513,9 +556,10 @@ function title() {
     <div class="eyebrow">Longlight Interactive</div>
     <h1>Funded<span class="dot">.</span></h1>
     <p>The firm gives you $25,000 and five days. Make <b>+$1,500</b>.
-      Lose <b>$750</b> in a day, touch the drawdown floor, or hold through the bell, and you're out.</p>
+      Lose <b>$750</b> in a day, touch the drawdown floor, or hold through the bell, and you're out.
+      Pass, and you move up to the $50k futures desk.</p>
     <p style="font-size:3.2cqw">Size buys a share of your buying power. News times are marked on the clock.</p>
-    ${saved ? `<button class="cta" data-action="cont">Continue · Day ${saved.run.day} of ${TIER1.evalDays}</button>
+    ${saved ? `<button class="cta" data-action="cont">Continue · ${ui.esc(tierOf(saved.run).short)} · Day ${saved.run.day}</button>
     <button class="cta ghost" data-action="start">New eval</button>`
     : `<button class="cta" data-action="start">${fresh ? 'Start training day' : 'Start eval'}</button>`}
     ${fresh ? '' : `<button class="cta ghost" data-action="shop">Perk shop · <span class="rep">${meta.rep} Rep</span></button>
@@ -524,7 +568,7 @@ function title() {
     <div class="fine">Desktop: B buy · S sell · F flatten · 1–3 size · P pause · M sound</div>
   `, {
     audio: () => { cycleAudioMode(); title(); },
-    start: () => intro(fresh ? startTutorial : startRun),
+    start: () => intro(fresh ? startTutorial : () => startRun()),
     cont: () => intro(() => resumeSaved(saved)),
     shop: () => shop(title),
     tut: () => intro(startTutorial),
