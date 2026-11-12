@@ -62,7 +62,7 @@ const rainDay = (run) => !!run && !S.tutorial && !!tierOf(run).rainBackdrop && r
 /** The desk for today (rain or shine), with the career's edge props on it. */
 function showDesk() {
   const rain = rainDay(S.run) && RULES.rainBackdrop;
-  fx.setBackdrop(rain || RULES.backdrop, { tod: !rain });
+  fx.setBackdrop(rain || RULES.backdrop, { tod: !rain, rain: rain ? S.run.tier || 'tier1' : null });
   setRain(!!rain);
   syncProps();
 }

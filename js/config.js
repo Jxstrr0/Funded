@@ -126,6 +126,23 @@ export const STUDIO = {
 // morning/evening light). It doesn't change the trading.
 export const WEATHER = {
   rainChance: 0.2, // share of trading days that are rain days
+  // Moving rain streaks drawn over the window glass on rain days, as % of the
+  // frame (left, top, width, height), matched to each tier's rain render. A
+  // tier with no entry (tier2: no window in view) gets none. Strength and
+  // speed are CSS variables at the top of css/style.css.
+  streaks: {
+    tier1: [ // the skyline either side of the top monitor
+      { l: 0, t: 33, w: 10.2, h: 11 },
+      { l: 89.8, t: 33, w: 10.2, h: 11 },
+    ],
+    tier3: [ // the glass wall: above the monitors, and above and below the wing monitors
+      { l: 0, t: 0, w: 100, h: 20.6 },
+      { l: 0, t: 20.6, w: 10.2, h: 15.6 },
+      { l: 89.8, t: 20.6, w: 10.2, h: 15.6 },
+      { l: 0, t: 64.8, w: 10.2, h: 14.2 },
+      { l: 89.8, t: 64.8, w: 10.2, h: 14.2 },
+    ],
+  },
 };
 
 // Edges on the desk: each edge the career holds puts its prop on the desk

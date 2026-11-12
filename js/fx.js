@@ -1,7 +1,7 @@
 // Juice: short visual and haptic feedback, and backdrop changes. DOM only,
 // no game logic. Everything here is skipped or toned down for players who
 // ask for reduced motion.
-import { TIME_OF_DAY, EDGE_PROPS } from './config.js';
+import { TIME_OF_DAY, EDGE_PROPS, WEATHER } from './config.js';
 
 const $ = (id) => document.getElementById(id);
 const MINUS = '−';
@@ -64,13 +64,15 @@ let token = 0;
 /**
  * Crossfade the gameplay backdrop (the desk changes as the career climbs,
  * and a cardboard box appears when you're fired). A missing file keeps the
- * current backdrop.
+ * current backdrop. `rain` is the tier id on a rain day (moving streaks over
+ * that tier's window glass), otherwise null.
  */
-export function setBackdrop(src, { tod = true, props = true } = {}) {
+export function setBackdrop(src, { tod = true, props = true, rain = null } = {}) {
   const desk = $('bgDesk');
   current ??= desk.getAttribute('src');
   if (todFor === null) setTodBase(current);
   $('props').classList.toggle('off', !props); // the box and the pass desk have their own props
+  setRainStreaks(rain);
   if (!src || src === current) return;
   const my = ++token;
   const img = new Image();
@@ -89,6 +91,20 @@ export function setBackdrop(src, { tod = true, props = true } = {}) {
     }, reducedMotion() ? 20 : 750);
   };
   img.src = src;
+}
+
+/** Rain running down the window glass (WEATHER.streaks); null stops it. */
+function setRainStreaks(tier) {
+  const box = $('rain');
+  const strips = (tier && WEATHER.streaks[tier]) || null;
+  box.classList.toggle('on', !!strips);
+  if (!strips || box.dataset.tier === tier) return;
+  box.dataset.tier = tier;
+  box.replaceChildren(...strips.map((r) => {
+    const s = document.createElement('span');
+    s.style.cssText = `left:${r.l}%;top:${r.t}%;width:${r.w}%;height:${r.h}%`;
+    return s;
+  }));
 }
 
 // ---------- time of day ----------

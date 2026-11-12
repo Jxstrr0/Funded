@@ -47,6 +47,10 @@
   --intro-scale: 3;
   --intro-origin: 44.3% 58.4%;
   --intro-ms: 1200ms;
+
+  /* Rain-day streaks over the window glass (where: WEATHER.streaks in js/config.js). */
+  --rain-strength: 0.45; /* 0 = off, 1 = full */
+  --rain-fall: 550ms;    /* time for one streak tile to fall; lower = faster */
 }
 
 * { box-sizing: border-box; }
@@ -135,6 +139,27 @@ button:focus-visible { outline: 0.5cqw solid var(--lilac); outline-offset: 0.3cq
 .frame:not(.desk) .props, .frame.vid:not(.ui) .props, .props.off { opacity: 0; }
 .prop { position: absolute; opacity: 0; transform: translateY(1.2%); transition: opacity 500ms ease, transform 500ms ease; }
 .prop.in { opacity: 1; transform: none; }
+/* Rain days: streaks falling behind the glass, one strip per window area (js/fx.js) */
+.rain { position: absolute; inset: 0; pointer-events: none; opacity: 0; transition: opacity 900ms ease; }
+.rain.on { opacity: var(--rain-strength); }
+.frame:not(.desk) .rain, .frame.vid:not(.ui) .rain { opacity: 0; }
+.rain span { position: absolute; overflow: hidden; }
+.rain span::before, .rain span::after {
+  content: ''; position: absolute; left: 0; right: 0;
+  top: -24cqw; bottom: 0;
+  background: url(../assets/rain-streaks.svg) 0 0 / 12cqw 24cqw;
+  animation: rainfall var(--rain-fall) linear infinite;
+  will-change: transform;
+}
+.rain span::after { /* nearer, bigger, fainter drops at a different pace */
+  top: -36cqw;
+  background-size: 18cqw 36cqw; background-position: 7cqw 0;
+  opacity: 0.5;
+  animation-name: rainfall-near; animation-duration: calc(var(--rain-fall) * 0.8);
+}
+.rain:not(.on) span::before, .rain:not(.on) span::after { animation-play-state: paused; }
+@keyframes rainfall { to { transform: translateY(24cqw); } }
+@keyframes rainfall-near { to { transform: translateY(36cqw); } }
 
 /* ---------- Monitor screens ---------- */
 
@@ -633,4 +658,5 @@ button:focus-visible { outline: 0.5cqw solid var(--lilac); outline-offset: 0.3cq
   .screen-bottom.danger { animation: none; box-shadow: inset 0 0 2.4cqw rgba(229, 72, 77, 0.5); }
   .bg-alt { transition: none; }
   .props, .prop { transition: none; transform: none; }
+  .rain { display: none; } /* the rain render already has drops on the glass */
 }
