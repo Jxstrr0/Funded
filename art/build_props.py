@@ -16,6 +16,17 @@ One file, three roles:
       so that `prop.webp` over `desk-<tier>.jpg` reproduces A. Writes assets/props/<tier>/<id>.webp
       and art/out/props/layout-<tier>.json.
 
+  python3 art/build_props.py --mouse [--tiers tier1,tier2,tier3] [--tods mid,am,pm] [--samples 192]
+      The desk mouse (js/clicker.js). For each tier and time of day it runs build_scene.py with
+      `--hook art/build_props.py --mouse`, renders a crop of CAM_main around the hero mouse with
+      overscan past the frame edge (the mouse hangs off the right and bottom), and writes
+      assets/mouse/<tier>-plate[-am|-pm].webp (the desk with the mouse and its shadow removed,
+      opaque with a feathered border) and assets/mouse/<tier>-mouse[-am|-pm].webp (the mouse and
+      its contact shadow, straight alpha, same box). `--tods ...,rain` adds -rain layers for the
+      --weather rain desks. The box is the same for every tod and
+      leaves room for the mouse to slide by MOUSE_TRAVEL. Prints the box for CLICKER.mouse.layout
+      and then composites plate + mouse over each desk into art/out/mouse/check-<tier>.png.
+
   blender -b --factory-startup -P art/build_props.py -- --cards [--ids ...] [--samples 128]
       Card stills: each prop alone on a transparent 480x480 frame with a shadow-catcher floor,
       a lilac and a cool rim light. Writes assets/cards/<id>.webp.
@@ -82,6 +93,8 @@ def webp(src_png, dst, quality=85):
 # =====================================================================================
 def driver():
     blender = os.environ.get("BLENDER", "blender")
+    if "--mouse" in ARGV:
+        return mouse_driver(blender)
     tiers = opt("--tiers", "tier1,tier2,tier3").split(",")
     samples = opt("--samples", "160")
     t_all = time.time()
@@ -327,6 +340,253 @@ def hook(G):
 
 
 # =====================================================================================
+# Desk mouse (--mouse)
+# =====================================================================================
+FRAME_W, FRAME_H = 1080, 1920
+MOUSE_TRAVEL = (0.014, 0.008)    # the most the game slides the mouse layer, as a fraction of frame W / H
+MOUSE_FEATHER = 12               # px of soft edge on the plate
+MOUSE_OVERSCAN = 160             # px rendered past each frame edge
+MOUSE_NAMES = ("mouse", "mouse_wheel", "mouse_seam")
+
+
+def mouse_name(tier, kind, tod):
+    return f"{tier}-{kind}{'' if tod == 'mid' else '-' + tod}"
+
+
+def mouse_driver(blender):
+    tiers = opt("--tiers", "tier1,tier2,tier3").split(",")
+    tods = opt("--tods", "mid,am,pm").split(",")
+    samples = opt("--samples", "192")
+    t_all = time.time()
+    if "--check-only" not in ARGV:
+        for tier in tiers:
+            for tod in tods:
+                t = time.time()
+                cmd = [blender, "-b", "--factory-startup", "-P", os.path.join(HERE, "build_scene.py"), "--",
+                       "--variant", tier, "--samples", samples, "--hook", os.path.abspath(__file__), "--mouse"]
+                if tod == "rain":
+                    cmd += ["--weather", "rain"]
+                elif tod != "mid":
+                    cmd += ["--tod", tod]
+                print(" ".join(cmd), flush=True)
+                subprocess.run(cmd, check=True)
+                print(f"mouse {tier} {tod}: {time.time() - t:.0f}s", flush=True)
+    mouse_check(tiers, tods)
+    print(f"total {time.time() - t_all:.0f}s")
+
+
+def mouse_check(tiers, tods):
+    """Plate + mouse over each desk: the error against the desk at rest, and a sheet with the
+    mouse at rest and at the four corners of its travel."""
+    from PIL import Image, ImageDraw
+    import numpy as np
+    out = os.path.join(HERE, "out", "mouse")
+    sheet_rows = []
+    for tier in tiers:
+        L = json.load(open(os.path.join(out, f"layout-{tier}.json")))
+        x0, y0, w, h = L["px"]
+        row = []
+        for tod in tods:
+            desk = "desk" + ("" if tier == "tier1" else "-" + tier) + ("" if tod == "mid" else "-" + tod) + ".jpg"
+            bg = Image.open(os.path.join(ROOT, "assets", desk)).convert("RGBA")
+            plate = Image.open(os.path.join(ROOT, "assets", "mouse", mouse_name(tier, "plate", tod) + ".webp")).convert("RGBA")
+            mouse = Image.open(os.path.join(ROOT, "assets", "mouse", mouse_name(tier, "mouse", tod) + ".webp")).convert("RGBA")
+            pad = 40
+            # a canvas with the frame at (pad, pad), big enough for the overscanned box
+            cw = max(FRAME_W, x0 + w) + 2 * pad
+            ch = max(FRAME_H, y0 + h) + 2 * pad
+
+            def comp(dx, dy):
+                c = Image.new("RGBA", (cw, ch), (0, 0, 0, 255))
+                c.alpha_composite(bg, (pad, pad))
+                c.alpha_composite(plate, (pad + x0, pad + y0))
+                c.alpha_composite(mouse, (pad + x0 + dx, pad + y0 + dy))
+                return c.crop((pad, pad, pad + FRAME_W, pad + FRAME_H))     # what the game shows
+            c0 = comp(0, 0)
+            a = np.asarray(c0.convert("RGB"), np.float32)
+            b = np.asarray(bg.convert("RGB"), np.float32)
+            d = np.abs(a - b).max(2)
+            print(f"mouse check {tier} {tod}: vs {desk} mean {d.mean():.3f}, in box mean "
+                  f"{d[y0:y0 + h, x0:x0 + w].mean():.2f} p99 {np.percentile(d[y0:y0 + h, x0:x0 + w], 99):.1f} "
+                  f"max {d.max():.0f} (0..255)")
+            dx, dy = round(MOUSE_TRAVEL[0] * FRAME_W), round(MOUSE_TRAVEL[1] * FRAME_H)
+            m = 60
+            box = (x0 - m, y0 - m, min(FRAME_W, x0 + w + m), min(FRAME_H, y0 + h + m))
+            tiles = [c0.crop(box)] + [comp(sx * dx, sy * dy).crop(box) for sx, sy in ((-1, -1), (1, -1), (-1, 1), (1, 1))]
+            dd = Image.fromarray(np.clip(d[box[1]:box[3], box[0]:box[2]] * 8, 0, 255).astype(np.uint8)).convert("RGBA")
+            tiles = [Image.open(os.path.join(ROOT, "assets", desk)).convert("RGBA").crop(box)] + tiles + [dd]
+            row.append(tiles)
+        sheet_rows.extend(row)
+    tw, th = sheet_rows[0][0].size
+    cols = len(sheet_rows[0])
+    sheet = Image.new("RGB", (cols * (tw + 6), len(sheet_rows) * (th + 6)), (20, 20, 28))
+    for r, tiles in enumerate(sheet_rows):
+        for c, t in enumerate(tiles):
+            sheet.paste(t.convert("RGB").resize((tw, th)), (c * (tw + 6), r * (th + 6)))
+    path = os.path.join(out, "check-mouse.png")
+    sheet.save(path)
+    print(f"mouse sheet: {path} (columns: desk, at rest, -x-y, +x-y, -x+y, +x+y, |rest - desk| x8)")
+
+
+def mouse_hook(G):
+    import bpy
+    import numpy as np
+    from bpy_extras.object_utils import world_to_camera_view
+    scene = G["scene"]
+    tier = G["VARIANT"]
+    tod = G["WEATHER"] or G["LIGHT_TOD"]
+    G["SKIP_RENDER"] = True
+    out = os.path.join(HERE, "out", "mouse", f"{tier}-{tod}")
+    os.makedirs(out, exist_ok=True)
+    G["hero_chair"].hide_render = True
+    main = G["cam_main"]
+    # overscan camera: CAM_main with a taller sensor and resolution at the same pixel scale
+    O = MOUSE_OVERSCAN
+    cd = main.data.copy()
+    cd.sensor_fit = "AUTO"
+    cd.sensor_width = main.data.sensor_width * (FRAME_H + 2 * O) / FRAME_H
+    cam = bpy.data.objects.new("CAM_mouse", cd)
+    scene.collection.objects.link(cam)
+    cam.matrix_world = main.matrix_world.copy()
+    scene.camera = cam
+    r = scene.render
+    r.resolution_x, r.resolution_y, r.resolution_percentage = FRAME_W + 2 * O, FRAME_H + 2 * O, 100
+    bpy.context.view_layer.update()
+    RW, RH = r.resolution_x, r.resolution_y
+
+    mouse = [o for o in scene.objects if o.name.split(".")[0] in MOUSE_NAMES and
+             (o.name.split(".")[0] == "mouse" and o.parent is None or o.parent and o.parent.name.split(".")[0] == "mouse")]
+    hero = [o for o in mouse if o.name.split(".")[0] == "mouse"]
+    # the hero mouse is the one nearest the hero desk's mouse slot
+    hero.sort(key=lambda o: (o.matrix_world.translation.x - 0.255) ** 2 + (o.matrix_world.translation.y + 0.15) ** 2)
+    root = hero[0]
+    objs = [root] + [o for o in root.children_recursive]
+    dg = bpy.context.evaluated_depsgraph_get()
+    pts = []
+    for p in world_points(objs, dg):
+        v = world_to_camera_view(scene, cam, p)
+        pts.append((v.x * RW - O, (1 - v.y) * RH - O))        # frame pixels (may run past the frame)
+    gx0, gx1 = min(p[0] for p in pts), max(p[0] for p in pts)
+    gy0, gy1 = min(p[1] for p in pts), max(p[1] for p in pts)
+    size = max(gx1 - gx0, gy1 - gy0)
+    shadow = max(18, int(0.35 * size))
+    tx, ty = math.ceil(MOUSE_TRAVEL[0] * FRAME_W) + 3, math.ceil(MOUSE_TRAVEL[1] * FRAME_H) + 3
+    bx0 = math.floor(gx0 - shadow - tx - MOUSE_FEATHER)
+    bx1 = math.ceil(gx1 + shadow + tx + MOUSE_FEATHER)
+    by0 = math.floor(gy0 - shadow - ty - MOUSE_FEATHER)
+    by1 = math.ceil(gy1 + shadow + ty + MOUSE_FEATHER)
+    # the overscanned part only has to cover the mouse sliding back into the frame
+    bx1 = min(bx1, FRAME_W + O)
+    by1 = min(by1, FRAME_H + O)
+    w, h = bx1 - bx0, by1 - by0
+    print(f"MOUSE {tier} {tod}: geometry x {gx0:.0f}..{gx1:.0f} y {gy0:.0f}..{gy1:.0f} px; box ({bx0},{by0}) {w}x{h}")
+
+    cy = scene.cycles
+    r.use_persistent_data = True
+    r.use_border = True
+    r.use_crop_to_border = True
+    r.border_min_x, r.border_max_x = (bx0 + O) / RW, (bx1 + O) / RW
+    r.border_min_y, r.border_max_y = 1 - (by1 + O) / RH, 1 - (by0 + O) / RH
+    st = r.image_settings
+    st.file_format, st.color_mode, st.color_depth = "PNG", "RGBA", "16"
+    samples = cy.samples
+
+    def render(path):
+        r.filepath = path
+        bpy.ops.render.render(write_still=True)
+
+    def load(path):
+        im = bpy.data.images.load(path)
+        im.colorspace_settings.name = "Non-Color"
+        a = np.empty(im.size[0] * im.size[1] * 4, np.float32)
+        im.pixels.foreach_get(a)
+        iw, ih = im.size
+        bpy.data.images.remove(im)
+        return a.reshape(ih, iw, 4)[::-1]
+
+    def save(rgba, name):
+        hh, ww = rgba.shape[:2]
+        img = bpy.data.images.new(name, ww, hh, alpha=True)
+        img.colorspace_settings.name = "Non-Color"
+        img.pixels.foreach_set(np.ascontiguousarray(rgba[::-1]).astype(np.float32).ravel())
+        png = os.path.join(out, name + ".png")
+        img.filepath_raw = png
+        img.file_format = "PNG"
+        img.save()
+        bpy.data.images.remove(img)
+        webp(png, os.path.join(ROOT, "assets", "mouse", name + ".webp"), quality=90)
+
+    def dilate(mask, n):
+        m = mask.copy()
+        for _ in range(n):
+            g = m.copy()
+            g[1:] |= m[:-1]; g[:-1] |= m[1:]; g[:, 1:] |= m[:, :-1]; g[:, :-1] |= m[:, 1:]
+            m = g
+        return m
+
+    t0 = time.time()
+    r.film_transparent = False
+    cy.samples, cy.use_denoising = samples, True
+    for o in objs:
+        o.hide_render = True
+    render(os.path.join(out, "B.png"))
+    for o in objs:
+        o.hide_render = False
+    render(os.path.join(out, "A.png"))
+    others = [o for o in scene.objects if o.type in ("MESH", "CURVE", "FONT") and o not in objs]
+    for o in others:
+        o.is_holdout = True
+    r.film_transparent = True
+    cy.samples, cy.use_denoising = 64, False
+    render(os.path.join(out, "M.png"))
+    for o in others:
+        o.is_holdout = False
+    A = load(os.path.join(out, "A.png"))[:, :, :3]
+    B = load(os.path.join(out, "B.png"))[:, :, :3]
+    m = load(os.path.join(out, "M.png"))[:, :, 3]
+    assert A.shape[:2] == (h, w), (A.shape, w, h)
+
+    # contact shadow: how much darker the desk got, only near the mouse
+    lw = np.array([0.2126, 0.7152, 0.0722], np.float32)
+    shade = np.clip(1 - (A @ lw) / np.maximum(B @ lw, 1e-4), 0, 1)
+    shade[shade < 0.02] = 0
+    solid = m > 0.02
+    near = dilate(solid, int(shadow * 0.6))
+    far = dilate(near, int(shadow * 0.4))
+    shade = shade * np.where(near, 1.0, np.where(far, 0.5, 0.0))
+    alpha = np.maximum(m, shade)
+    alpha[m > 0.985] = 1.0
+    safe = np.maximum(alpha, 1e-4)[:, :, None]
+    C = np.clip((A - (1 - alpha[:, :, None]) * B) / safe, 0, 1)
+    C[alpha < 1e-3] = 0
+    save(np.dstack([C, alpha]), mouse_name(tier, "mouse", tod))
+
+    # the plate: the desk without the mouse, opaque, feathered toward the box edges
+    yy, xx = np.mgrid[0:h, 0:w].astype(np.float32)
+    edge = np.minimum(np.minimum(xx + 0.5, w - xx - 0.5), np.minimum(yy + 0.5, h - yy - 0.5))
+    f = np.clip(edge / MOUSE_FEATHER, 0, 1)
+    f = f * f * (3 - 2 * f)
+    save(np.dstack([B, f]), mouse_name(tier, "plate", tod))
+
+    ys, xs = np.nonzero(alpha > 2 / 255)
+    # each side needs room for the travel plus the feather, unless that edge stays off frame
+    inner = ((xs.min() >= MOUSE_FEATHER + tx or bx0 + tx <= 0) and
+             (w - xs.max() - 1 >= MOUSE_FEATHER + tx or bx1 - tx >= FRAME_W) and
+             (ys.min() >= MOUSE_FEATHER + ty or by0 + ty <= 0) and
+             (h - ys.max() - 1 >= MOUSE_FEATHER + ty or by1 - ty >= FRAME_H))
+    print(f"MOUSE {tier} {tod}: mouse+shadow occupies x {xs.min()}..{xs.max()} y {ys.min()}..{ys.max()} of {w}x{h}; "
+          f"travel + feather margin {'OK' if inner else 'TOO SMALL'}")
+    layout = {"l": round(bx0 / FRAME_W * 100, 2), "t": round(by0 / FRAME_H * 100, 2),
+              "w": round(w / FRAME_W * 100, 2), "h": round(h / FRAME_H * 100, 2), "px": [bx0, by0, w, h]}
+    lp = os.path.join(HERE, "out", "mouse", f"layout-{tier}.json")
+    if os.path.exists(lp) and json.load(open(lp))["px"] != layout["px"]:
+        print(f"WARNING: box differs from the one already in {lp}")
+    json.dump(layout, open(lp, "w"))
+    print(f"MOUSE LAYOUT {tier}: {{ l: {layout['l']}, t: {layout['t']}, w: {layout['w']}, h: {layout['h']} }} "
+          f"in {time.time() - t0:.0f}s", flush=True)
+
+
+# =====================================================================================
 # Card stills (own scene)
 # =====================================================================================
 def cards():
@@ -446,7 +706,7 @@ def cards():
 
 # =====================================================================================
 if "cam_main" in globals() and "VARIANT" in globals():
-    hook(globals())
+    mouse_hook(globals()) if "--mouse" in ARGV else hook(globals())
 elif "bpy" in sys.modules and "--cards" in ARGV:
     cards()
 elif __name__ == "__main__" and "bpy" not in sys.modules:
