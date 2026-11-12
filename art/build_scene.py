@@ -51,6 +51,10 @@ VARIANTS = ("tier1", "tier2", "tier3", "fired")
 if VARIANT not in VARIANTS:
     raise SystemExit(f"--variant must be one of {', '.join(VARIANTS)}")
 TOD = _arg("--tod", "mid")
+# --hook FILE: run a Python file after the scene is built and checked, before the default
+# renders. It sees this script's globals plus cam_main, cam_wide, top, bot, hero_chair and
+# jobs; setting SKIP_RENDER = True in it skips the default renders (art/build_props.py uses this).
+HOOK = _arg("--hook", None)
 if TOD not in ("am", "mid", "pm"):
     raise SystemExit("--tod must be one of am, mid, pm")
 if VARIANT == "fired" and TOD != "mid":
@@ -1872,6 +1876,12 @@ def main():
 
     jobs = {"main": (cam_main, f"desk{SUFFIX}.png", False), "wide": (cam_wide, f"wide{SUFFIX}.png", True)}
     os.makedirs(OUT_DIR, exist_ok=True)
+    if HOOK:
+        g = dict(globals(), cam_main=cam_main, cam_wide=cam_wide, top=top, bot=bot,
+                 hero_chair=hero_chair, jobs=jobs, SKIP_RENDER=False)
+        exec(compile(open(HOOK).read(), HOOK, "exec"), g)
+        if g["SKIP_RENDER"]:
+            return
     for key in CAMS:
         cam_ob, fname, chair_on = jobs[key]
         # The player sits in the chair for the gameplay view, so it is only shown in the wide intro shot.
