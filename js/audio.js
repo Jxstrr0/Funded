@@ -149,6 +149,12 @@ const synth = {
   pass: () => [523, 659, 784, 1046].forEach((f, i) => tone(f, 0.25, { type: 'triangle', gain: 0.08, at: i * 0.11 })),
   mulligan: () => tone(900, 0.4, { type: 'sawtooth', gain: 0.05, slide: 0.3 }),
   rep: () => [1318, 1568].forEach((f, i) => tone(f, 0.12, { type: 'triangle', gain: 0.06, at: i * 0.07 })),
+  deal: () => [0, 0.12, 0.24].forEach((at) => tone(2400, 0.03, { type: 'square', gain: 0.02, at })),
+  pick: () => { tone(300, 0.05, { type: 'square', gain: 0.04 }); tone(1046, 0.15, { gain: 0.06, at: 0.06 }); },
+  rare: () => [1568, 2093, 2637].forEach((f, i) => tone(f, 0.2, { gain: 0.04, at: i * 0.08 })),
+  reroll: () => [0, 0.05, 0.1, 0.15].forEach((at) => tone(2000, 0.025, { type: 'square', gain: 0.015, at })),
+  stamp: () => tone(110, 0.12, { type: 'square', gain: 0.06, slide: 0.6 }),
+  purchase: () => { tone(1318, 0.1, { type: 'triangle', gain: 0.06 }); tone(1975, 0.25, { type: 'triangle', gain: 0.06, at: 0.08 }); },
 };
 
 const fx = (name, opts) => (...args) => { if (!play(name, opts?.(...args))) synth[name](...args); };
@@ -166,4 +172,12 @@ export const sfx = {
   pass: fx('pass'),
   mulligan: fx('mulligan'),
   rep: fx('rep'),
+  // Edge draft, mandates and the shop.
+  deal: fx('deal'),
+  pick: fx('pick'),
+  rare: fx('rare'),
+  reroll: fx('reroll'),
+  // Mandate switch: a full stamp when it goes on, a lighter, higher one when it goes off.
+  stamp: fx('stamp', (on = true) => (on ? {} : { gain: 0.5, rate: 1.3 })),
+  purchase: fx('purchase'),
 };
