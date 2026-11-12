@@ -36,7 +36,7 @@ export function unlockAudio() {
     ctx = new AC();
     const g = (v, to) => { const n = ctx.createGain(); n.gain.value = v; n.connect(to); return n; };
     const master = g(AUDIO.master, ctx.destination);
-    bus = { master, sfx: g(AUDIO.sfx, master), ambience: g(0, master), music: g(0, master) };
+    bus = { master, sfx: g(AUDIO.sfx, master), ambience: g(0, master), music: g(0, master), dayMusic: g(0, master) };
     applyLevels();
     load();
   }
@@ -68,9 +68,9 @@ function applyLevels() {
   syncLoops();
 }
 
-// ---------- loops: ambience during a live day, music elsewhere ----------
+// ---------- loops: ambience and day music during a live day, menu music elsewhere ----------
 
-/** 'menu' (title, cards: music), 'day' (live session: ambience), 'quiet' (paused: nothing). */
+/** 'menu' (title, cards: menu music), 'day' (live session: ambience + day music), 'quiet' (paused: nothing). */
 export function setScene(s) {
   scene = s;
   syncLoops();
@@ -81,6 +81,7 @@ function syncLoops() {
   const loopsOn = mode === 'all';
   fadeLoop('music', loopsOn && scene === 'menu' ? AUDIO.music : 0);
   fadeLoop('ambience', loopsOn && scene === 'day' ? AUDIO.ambience : 0);
+  fadeLoop('dayMusic', loopsOn && scene === 'day' ? AUDIO.dayMusic : 0);
 }
 
 function fadeLoop(name, target) {
