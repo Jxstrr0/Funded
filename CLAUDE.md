@@ -48,6 +48,7 @@ Read this at the start of every session. The full design spec is `docs/HANDOFF.m
 - Careful-play check: `node tools/levers.mjs` tries one tuning change at a time (target, news count, follow-through, jump size, eval days) for a careful and an aggressive bot. Shared bot code is in `tools/sim.mjs`.
 - Visit counts: a cookieless Cloudflare Web Analytics beacon at the end of `index.html` (owner's request, 2026-11-12), shared with the studio's zone-wide analytics site.
 - Next: nothing scheduled. Open items: Daily Challenge (handoff §12) and the outstanding art list in handoff §11.
+- Version: `VERSION` in `js/config.js` (four numbers, Major.Minor.Patch.Build, now 0.8.0.0), shown small on the title screen. Bump it in any PR that changes what players see. When it changes on `main`, `.github/workflows/publish-release.yml` publishes a GitHub Release titled from the PR, which longlight.games reads for the version and "what's new" line.
 - Update this section when a stage lands.
 
 ## Security and privacy (studio baseline)

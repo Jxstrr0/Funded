@@ -1,0 +1,48 @@
+# Publishes a GitHub Release for each new version of the game.
+# Adapted from Quench .github/workflows/publish-release.yml (12 November 2026)
+#
+# Why: the Longlight site (longlight.games) reads each game's newest release
+# to show its version number and "what's new" line.
+#
+# How: on every push to main it reads VERSION from js/config.js. If there is
+# no release called v<version> yet, it makes one, titled from the commit that
+# shipped it (a squash merge, so the PR's title, without the "(#21)" on the
+# end). A push that doesn't change the version does nothing.
+#
+# Free, and it uses no keys (only GitHub's own built-in token). It does not
+# touch the game or its deploy, and the tag it makes starts no other workflow.
+name: Publish release
+on:
+  push:
+    branches: [main]
+permissions:
+  contents: write # to create the release and its tag
+concurrency:
+  group: publish-release
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Publish a release if this version has none
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SUBJECT: ${{ github.event.head_commit.message }}
+        run: |
+          V=$(sed -n "s/^export const VERSION = '\([0-9.]*\)';.*/\1/p" js/config.js)
+          if ! echo "$V" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$'; then
+            echo "No four-number VERSION found in js/config.js (got '$V')"; exit 1
+          fi
+          if gh release view "v$V" >/dev/null 2>&1; then
+            echo "Release v$V already exists. Nothing to do."
+            exit 0
+          fi
+          # First line of the merge commit, minus a trailing "(#12)".
+          SUMMARY=$(printf '%s\n' "$SUBJECT" | head -n1 | sed -E 's/ *\(#[0-9]+\)$//')
+          gh release create "v$V" --target "$GITHUB_SHA" \
+            --title "v$V - ${SUMMARY:-update}" \
+            --notes "${SUMMARY:-Update}."
+          echo "Published v$V."
