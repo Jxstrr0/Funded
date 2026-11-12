@@ -75,6 +75,7 @@ body {
   aspect-ratio: 9 / 16;
   container-type: inline-size;
   overflow: hidden;
+  overflow: clip; /* never scrollable, even by focus (the zoomed intro shot is 3x the frame) */
   background: var(--slate);
   touch-action: manipulation;
   user-select: none;
@@ -117,6 +118,7 @@ button:focus-visible { outline: 0.5cqw solid var(--lilac); outline-offset: 0.3cq
   transition: opacity calc(var(--intro-ms) / 2) ease-in calc(var(--intro-ms) / 2);
 }
 .frame.desk .bg-wide { opacity: 0; }
+.frame.desk:not(.intro) .bg-wide, .frame.desk.ui .bg-wide { display: none; } /* done with the intro shot */
 /* Backdrop crossfade layer (tier desks, the fired box) */
 .bg-alt { opacity: 0; transition: opacity 700ms ease; }
 .frame.desk .bg-alt.show { opacity: 1; }
