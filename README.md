@@ -11,7 +11,7 @@ Play: https://funded.longlight.games (GitHub Pages, `main` branch root)
 - **Stage 1: one playable day.** Done.
 - **Stage 2: rules engine and fired screen.** Done.
 - **Five-day eval** plays day to day in memory, with minimum days, early pass, and pass screen.
-- **Stage 3 saving** (localStorage, mid-day resume) is next.
+- **Stage 3: saving.** Done. Reload resumes the day in progress, paused.
 
 ## Tuning
 
@@ -41,6 +41,7 @@ js/rules.js       firm rules and account maths (pure)
 js/chart.js       canvas candlesticks
 js/ui.js          monitor overlays, meters, cards
 js/audio.js       placeholder synth sounds
+js/save.js        localStorage save and resume
 js/main.js        boot, intro, game loop and state machine
 assets/           desk.png (gameplay), wide.png (intro)
 tests/            node:test suites for engine and rules
