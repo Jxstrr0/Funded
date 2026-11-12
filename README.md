@@ -49,7 +49,8 @@ js/save.js        localStorage save and resume
 js/meta.js        Reputation, perk shop, tutorial flag
 js/tutorial.js    guided training day
 js/main.js        boot, intro, game loop and state machine
-assets/           desk.png (gameplay), wide.png (intro)
+assets/           desk.jpg (gameplay), wide.jpg (intro), audio/
+art/              build_scene.py: the Blender scene that renders the backdrops
 tests/            node:test suites for engine and rules
 ```
 

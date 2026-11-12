@@ -17,7 +17,7 @@ Read this at the start of every session. The full design spec is `docs/HANDOFF.m
 
 ## Art
 
-- `assets/desk.png` and `assets/wide.png` started as Blender blockouts. The scene is being rebuilt as a local, reproducible script, `art/build_scene.py`. See `art/README.md`.
+- `assets/desk.jpg` and `assets/wide.jpg` are rendered from `art/build_scene.py` (local headless Blender, fully procedural, about 12 minutes for both at 96 samples). Renders go to `art/out/` (git-ignored); convert to JPG with `ffmpeg -i art/out/desk.png -q:v 3 assets/desk.jpg`. See `art/README.md`.
 - Keep the camera and screen contract fixed so the percentage-based overlays line up: 9:16 renders, `CAM_main` 35mm at (0, −1.02, 1.17) looking +Y, `CAM_wide` 30mm at (0, −2.85, 1.70) with rotation (1.466, 0, −0.025), and screens of 0.54×0.32 m centred at (0, 0.18, 1.36) and (0, 0.18, 0.98).
 - Measured screen rectangles (% of frame, left/right/top/bottom): CAM_main top 11/89/21.6/47.6, bottom 11/89/52.4/78.4. CAM_wide top 33.0/59.4/46.2/54.9, bottom 33.2/59.3/56.4/65.0. Intro zoom: scale 3, origin 44.3% 58.4%.
 - Outstanding art: listed in `docs/HANDOFF.md` §11 (ignore its Higgsfield link).
