@@ -23,11 +23,12 @@ export function effectiveRules(perks = [], rules = TIER1, career = {}) {
   if (perks.includes('thickSkin')) loss += PERKS.find((p) => p.id === 'thickSkin').lossBuffer;
   if (edges.includes('riskFriend')) loss += edgeById('riskFriend').lossBuffer;
   if (mandates.includes('tightLeash')) loss -= MANDATES.find((m) => m.id === 'tightLeash').lossCut;
+  if (career.hot) loss += edgeById('hotHand').lossBoost;
   if (loss !== 1) out.dailyLossLimit = Math.round(rules.dailyLossLimit * loss);
   if (edges.includes('shortWeek')) out.profitTarget = Math.round(rules.profitTarget * (1 - edgeById('shortWeek').targetCut));
   if (edges.includes('coffee')) out.clockScale = 1 + edgeById('coffee').slowdown;
   if (career.hot) {
-    // Hot Hand: MAX buys 25% more today (buying power, contracts, or premium budget).
+    // Hot Hand: sizes buy more today (buying power, contracts, or premium budget); the loss limit grows too (above).
     const k = 1 + edgeById('hotHand').sizeBoost;
     if (rules.option) {
       out.option = { ...rules.option, premiumBudget: Math.round(rules.option.premiumBudget * k) };

@@ -5,10 +5,16 @@ both backdrops (CAM_main -> desk.png, CAM_wide -> wide.png) with Cycles on CPU.
 
     blender -b --factory-startup -P art/build_scene.py -- [--out DIR] [--samples N] [--preview]
                                                            [--cams main,wide] [--variant tier1|tier2|tier3|fired]
+                                                           [--tod am|mid|pm]
 
 --variant picks the gameplay desk (CAM_main) for each career stage: tier1 (back
 row, the default and the original look), tier2 (mid-floor with wing monitors),
 tier3 (window seat over the city) or fired (tier1 desk with a packed box).
+
+--tod picks the time of day for tier1..tier3 (the game crossfades the desk from
+the opening bell to the close): am (cool, soft morning), mid (the default) or pm
+(warm, low late-afternoon sun). It only changes lights, sky, glass, the city's
+windows and haze; geometry, cameras and the hero screens stay as they are.
 
 Everything is procedural (no downloaded assets). See art/README.md for the
 camera/screen contract that must stay fixed.
@@ -44,9 +50,15 @@ VARIANT = _arg("--variant", "tier1")
 VARIANTS = ("tier1", "tier2", "tier3", "fired")
 if VARIANT not in VARIANTS:
     raise SystemExit(f"--variant must be one of {', '.join(VARIANTS)}")
-# Variants only change the gameplay view, so they render CAM_main unless asked otherwise.
-CAMS = _arg("--cams", "main,wide" if VARIANT == "tier1" else "main").split(",")
+TOD = _arg("--tod", "mid")
+if TOD not in ("am", "mid", "pm"):
+    raise SystemExit("--tod must be one of am, mid, pm")
+if VARIANT == "fired" and TOD != "mid":
+    raise SystemExit("--tod does not apply to the fired desk")
+# Variants and times of day only change the gameplay view, so they render CAM_main unless asked otherwise.
+CAMS = _arg("--cams", "main,wide" if VARIANT == "tier1" and TOD == "mid" else "main").split(",")
 SUFFIX = "" if VARIANT == "tier1" else "-" + VARIANT     # desk.png / desk-tier2.png ...
+SUFFIX += "" if TOD == "mid" else "-" + TOD               # desk-am.png / desk-tier2-pm.png ...
 
 # ---------------------------------------------------------------------------
 # Contract (do not change: the game overlays its UI on the hero screens)
@@ -1472,29 +1484,116 @@ def variant_tier3():
     build_wing_monitors(0.32)
     set_mat("hero_desk_top", make_stone("stone_top", "#23272f", "#5d6472"))
     set_mat("hero_desk_edge", mat_basic("stone_edge", "#1b1e25", 0.35))
-    # slightly warm-tinted glass (no glossy: it mirrored the ceiling lights as bright bands)
-    g = bpy.data.materials.new("window_glass3")
-    nb = NB(g)
-    t = nb.node("ShaderNodeBsdfTransparent")
-    t.inputs[0].default_value = hex_lin("#f4eeec")
-    nb.output(t.outputs[0])
-    set_mat("window_glass", g)
     build_skyline_near()
-    # low warm sun from beyond the glass
-    ld = bpy.data.lights.new("dusk_sun", "SUN")
-    ld.energy = 2.2
-    ld.color = hex_lin("#ffb98a")[:3]
-    ld.angle = math.radians(2.0)
-    lo = bpy.data.objects.new("dusk_sun", ld)
-    lo.rotation_euler = (math.radians(-80), 0, math.radians(24))
-    coll("Lights").objects.link(lo)
-    for ob in coll("Lights").objects:
-        if ob.name.startswith("window_fill"):
-            ob.data.color = hex_lin("#f0c7b0")[:3]
-            ob.data.energy = 260.0
+    # The glass tint, the sun and the window fill depend on the time of day: see apply_tod().
 
 
 DUSK_SKY = [(0.0, "#f3a46c"), (0.6, "#1d2a5c"), (0.07, "#eaa38e"), (0.17, "#b98fae"), (0.32, "#6a63a3")]
+
+
+# ---------------------------------------------------------------------------
+# Time of day (--tod). Only lights, sky, glass and the city's materials change.
+# tier1/tier2 mid is the original look; tier3 pm is its original dusk.
+# ---------------------------------------------------------------------------
+AM_SKY = [(0.0, "#c9d6e6"), (0.45, "#7f9cc6"), (0.04, "#e3e8ee"), (0.14, "#bccbe0")]
+PM_SKY = [(0.0, "#f2b27e"), (0.5, "#4d64a0"), (0.05, "#f0b896"), (0.13, "#dba7a2"), (0.26, "#9c97bf")]
+DAY3_SKY = [(0.0, "#c3d0e2"), (0.6, "#4a73b0"), (0.06, "#dfe1e6"), (0.2, "#a2bbdb")]
+
+
+def tod_env():
+    """(sky stops, ambient colour, ambient strength, make_tower kwargs) for VARIANT and TOD."""
+    if VARIANT == "tier3":
+        if TOD == "pm":
+            return DUSK_SKY, "#8c7fa6", 0.35, dict(lit_base=0.6, haze_col="#c99aa6", tones=("#1b2340", "#2f3a5e"),
+                                                   glass_cols=("#1a2340", "#56507e"), haze_start=40.0, haze_len=300.0)
+        if TOD == "am":
+            return AM_SKY, "#7d93b6", 0.3, dict(lit_base=0.9, haze_col="#cfd9e6", tones=("#2b3c58", "#4a5d80"),
+                                                glass_cols=("#25344f", "#55698c"), haze_start=25.0, haze_len=170.0)
+        return DAY3_SKY, "#6f88ad", 0.3, dict(lit_base=0.84, haze_col="#bccbdf", tones=("#26385a", "#435a80"),
+                                              glass_cols=("#1e2e4a", "#4a6590"), haze_start=45.0, haze_len=260.0)
+    if TOD == "am":
+        return AM_SKY, "#8aa0c0", 0.32, dict(lit_base=0.9, haze_col="#cdd8e6", haze_start=30.0, haze_len=170.0)
+    if TOD == "pm":
+        return PM_SKY, "#b39070", 0.3, dict(lit_base=0.66, haze_col="#e2b9a4", tones=("#2b2f4c", "#4a4f70"),
+                                             glass_cols=("#2a2c48", "#6c5f80"))
+    return DAY_SKY, "#6d84a8", 0.26, None
+
+
+def set_glass(color):
+    """Window glass tint (transparent only: glossy mirrored the ceiling lights as bright bands)."""
+    g = bpy.data.materials.new("window_glass_" + TOD)
+    nb = NB(g)
+    t = nb.node("ShaderNodeBsdfTransparent")
+    t.inputs[0].default_value = hex_lin(color)
+    nb.output(t.outputs[0])
+    set_mat("window_glass", g)
+
+
+def add_sun(name, energy, color, elev, az, angle=2.0):
+    """Sun shining in through the window wall (+Y) toward the camera, `elev` degrees above the
+    horizon and turned `az` degrees about Z."""
+    ld = bpy.data.lights.new(name, "SUN")
+    ld.energy = energy
+    ld.color = hex_lin(color)[:3]
+    ld.angle = math.radians(angle)
+    lo = bpy.data.objects.new(name, ld)
+    lo.rotation_euler = (math.radians(elev - 90), 0, math.radians(az))
+    coll("Lights").objects.link(lo)
+    return lo
+
+
+def tune_lights(spec):
+    """spec: light base name -> (energy multiplier or None, colour or None, absolute energy or None)."""
+    for ob in coll("Lights").objects:
+        n = ob.name.split(".")[0]
+        if n in spec:
+            mul, col, absolute = spec[n]
+            if absolute is not None:
+                ob.data.energy = absolute
+            elif mul is not None:
+                ob.data.energy *= mul
+            if col is not None:
+                ob.data.color = hex_lin(col)[:3]
+
+
+def apply_tod():
+    """Lights and glass for the time of day. A no-op for tier1/tier2 mid and for fired."""
+    if VARIANT == "fired":
+        return
+    if VARIANT == "tier3":
+        if TOD == "pm":                                    # the original dusk
+            set_glass("#f4eeec")
+            add_sun("dusk_sun", 2.2, "#ffb98a", 10, 24)
+            tune_lights({"window_fill": (None, "#f0c7b0", 260.0)})
+        elif TOD == "am":
+            set_glass("#eaf0f8")
+            tune_lights({"window_fill": (None, "#d6e3f6", 520.0),
+                         "panel_light": (0.85, "#eef3ff", None),
+                         "hero_key": (0.9, "#eef3ff", None),
+                         "lamp_light": (0.6, None, None)})
+        else:
+            set_glass("#eef2f6")
+            add_sun("day_sun", 1.2, "#fff4e4", 48, 32, angle=1.0)
+            tune_lights({"window_fill": (None, "#d0dcf0", 600.0)})
+        return
+    if TOD == "am":
+        set_glass("#e8f0fa")
+        tune_lights({"window_fill": (1.5, "#dce8fa", None),
+                     "panel_light": (0.68, "#e4eeff", None),
+                     "hero_key": (0.7, "#e2ecff", None),
+                     "hero_rim": (0.85, "#d6e3ff", None),
+                     "lamp_light": (0.35, None, None)})
+        set_mat("light_panel", mat_emit("ceiling_panel_am", "#eaf2ff", 1.15))
+    elif TOD == "pm":
+        set_glass("#f6ece2")
+        add_sun("late_sun", 3.0, "#ffac66", 18, 32)
+        tune_lights({"window_fill": (1.4, "#ffc48a", None),
+                     "panel_light": (0.85, "#ffcf98", None),
+                     "hero_key": (1.1, "#ffc58a", None),
+                     "hero_rim": (1.3, "#ffb070", None),
+                     "lamp_light": (2.2, None, None)})
+        set_mat("lamp_bulb", mat_emit("lamp_glow_pm", "#ffd29a", 6.0))
+        set_mat("light_panel", mat_emit("ceiling_panel_pm", "#ffeacc", 1.5))
 
 
 def variant_fired():
@@ -1739,13 +1838,13 @@ def verify(cams, screens):
 def main():
     t0 = time.time()
     build_materials()
+    sky, amb_col, amb_str, tower_kw = tod_env()
+    make_world(sky, amb_col, amb_str)
+    if tower_kw is not None:
+        M["tower"] = make_tower("tower_" + TOD, **tower_kw)
     if VARIANT == "tier3":
-        make_world(DUSK_SKY, "#8c7fa6", 0.35)
-        M["tower"] = make_tower("tower_dusk", lit_base=0.6, haze_col="#c99aa6", tones=("#1b2340", "#2f3a5e"),
-                                glass_cols=("#1a2340", "#56507e"), haze_start=40.0, haze_len=300.0)
         build_room(Y1=WIN3_Y, pillar=False)
     else:
-        make_world()
         build_room(pillar=VARIANT != "tier2")
     chair_src = build_chair_source()
     top, bot = build_hero_desk()
@@ -1758,10 +1857,11 @@ def main():
         build_bg_desks(chair_src)
         if VARIANT == "fired":
             variant_fired()
+    apply_tod()
     build_city()
     cam_main, cam_wide = build_cameras()
     setup_render()
-    print(f"Scene built in {time.time() - t0:.1f}s; variant {VARIANT}; objects: {len(bpy.data.objects)}")
+    print(f"Scene built in {time.time() - t0:.1f}s; variant {VARIANT}; tod {TOD}; objects: {len(bpy.data.objects)}")
 
     bpy.context.view_layer.update()
     ok = verify([cam_main, cam_wide], [top, bot])

@@ -111,6 +111,16 @@ export const STUDIO = {
   firedBackdrop: 'assets/desk-fired.jpg', // the cardboard box
 };
 
+// Time of day: each desk backdrop (say desk.jpg) can have a morning version
+// (desk-am.jpg) and a closing-bell version (desk-pm.jpg). Through the day the
+// morning layer fades out, then the late-afternoon one fades in. Shares of the
+// day: 0 = 9:30 open, 1 = 16:00 bell. A missing file just shows the plain desk.
+export const TIME_OF_DAY = {
+  amFadeEnd: 0.4,    // morning light gone by about 12:05
+  pmFadeStart: 0.5,  // golden light starts at 12:45...
+  pmPeak: 1,         // ...and is this strong at the bell (0..1)
+};
+
 // One trading day.
 export const SESSION = {
   realSeconds: 180,       // 3 minutes real time
@@ -201,11 +211,11 @@ export const PERKS = [
 export const EDGE_CHOICES = 3;
 export const EDGES = [
   { id: 'rewind', name: 'Rewind', weight: 1, desc: 'Once per career, a rule break rewinds the tape 10 seconds and pauses instead.', seconds: 10, uses: 1 },
-  { id: 'hotHand', name: 'Hot Hand', weight: 3, desc: 'After a green day, MAX size is 25% bigger the next day.', sizeBoost: 0.25 },
+  { id: 'hotHand', name: 'Hot Hand', weight: 3, desc: 'After a green day, the next day your sizes and your daily loss limit are both 20% bigger.', sizeBoost: 0.20, lossBoost: 0.20 },
   { id: 'stopDiscipline', name: 'Stop Discipline', weight: 3, desc: "Auto-flatten when a position's open loss reaches 60% of the daily limit.", atShareOfLimit: 0.6 },
-  { id: 'tapeReader', name: 'Tape Reader', weight: 3, desc: 'News markers show ▲ or ▼ 3 seconds before the headline hits.', leadSeconds: 3 },
+  { id: 'tapeReader', name: 'Tape Reader', weight: 1, desc: 'News markers show ▲ or ▼ 1.5 seconds before the headline hits.', leadSeconds: 1.5 },
   { id: 'riskFriend', name: 'Risk Desk Friend', weight: 3, desc: 'Daily loss limit +10% for the rest of the career.', lossBuffer: 0.10 },
-  { id: 'shortWeek', name: 'Short Week', weight: 2, desc: 'Profit target -8%.', targetCut: 0.08 },
+  { id: 'shortWeek', name: 'Short Week', weight: 2, desc: 'Profit target -12%.', targetCut: 0.12 },
   { id: 'coffee', name: 'Coffee', weight: 3, desc: 'The clock runs 15% slower.', slowdown: 0.15 },
   { id: 'whisper', name: 'Whisper', weight: 1, desc: "The day-open card tells you which way the day's first headline goes." },
   { id: 'rainmaker', name: 'Rainmaker', weight: 2, desc: 'Rep earned this career x1.25.', repBonus: 0.25 },
@@ -218,7 +228,7 @@ export const MANDATES = [
   { id: 'noFlatten', name: 'No Flatten', repBonus: 0.20, desc: 'No FLATTEN button. Options: CLOSE only works in the last 20 seconds.' },
   { id: 'tightLeash', name: 'Tight Leash', repBonus: 0.30, desc: 'Daily loss limit -25%.', lossCut: 0.25 },
   { id: 'blindNews', name: 'Blind News', repBonus: 0.25, desc: 'News times are hidden: no markers on the chart, no times at the open.' },
-  { id: 'maxOnly', name: 'Max Only', repBonus: 0.40, desc: 'Every order is MAX size.' },
+  { id: 'maxOnly', name: 'Max Only', repBonus: 0.15, desc: 'Every order is MAX size.' },
 ];
 
 // How the morning reads on the day-open card (Pre-market perk).
