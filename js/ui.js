@@ -203,8 +203,11 @@ export function setBell(secondsLeft, holding, word = 'FLATTEN') {
   el.clock.classList.add('pulse');
 }
 
-export function setPaused(p) {
+/** Show or hide the pause cover. `note` swaps its text (Rewind uses it to say why). */
+export function setPaused(p, note = null) {
   el.paused.hidden = !p;
+  el.paused.querySelector('.paused-title').textContent = note?.title || 'Paused';
+  el.paused.querySelector('.paused-sub').textContent = note?.sub || 'Tap to resume';
 }
 
 // ---------- bottom monitor ----------

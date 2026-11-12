@@ -36,7 +36,7 @@ export class Chart {
 
   /**
    * @param {{candles: Array<{o,h,l,c}>, last: number, avg: number|null, qty: number,
-   *          news: Array<{candle:number, revealed:boolean, dir:number}>, slot: number}} d
+   *          news: Array<{candle:number, revealed:boolean, dir:number, hidden?:boolean}>, slot: number}} d
    */
   draw(d) {
     this.data = d;
@@ -97,6 +97,7 @@ export class Chart {
 
     // News markers on the time axis.
     for (const n of d.news) {
+      if (n.hidden) continue; // Blind News mandate: no marker until the headline hits
       const cx = plotL + (n.candle + 0.5) * slotW;
       const cy = plotB + 1 + fs * 0.45;
       const s = fs * 0.42;

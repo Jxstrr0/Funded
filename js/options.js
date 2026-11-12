@@ -35,13 +35,25 @@ export function ivAt(market, tick, rules) {
   return market.baseIV * (o.ivPumpAtOpen + (o.ivEarningsPump - o.ivPumpAtOpen) * x);
 }
 
+/**
+ * Share of the day's time value used up at day fraction f. Normally f; with
+ * the Theta Shield edge it runs at `rate` until `untilMinute`, then catches up
+ * so expiry is still worth only intrinsic value at the bell.
+ */
+export function decayed(f, shield, session = SESSION) {
+  if (!shield) return f;
+  const fn = (shield.untilMinute - session.marketOpenMinute) / session.marketMinutes;
+  if (f <= fn) return f * shield.rate;
+  return fn * shield.rate + ((f - fn) * (1 - fn * shield.rate)) / (1 - fn);
+}
+
 const cents = (x) => Math.max(0.01, Math.round(x * 100) / 100);
 
 /** Premiums at a tick: {call, put, iv, minutesLeft}. */
 export function quoteAt(market, tick, rules, session = SESSION) {
   const n = session.candles * session.ticksPerCandle;
   const i = Math.max(0, Math.min(tick, n - 1));
-  const minutesLeft = Math.max(rules.option.minMinutesLeft, session.marketMinutes * (1 - i / n));
+  const minutesLeft = Math.max(rules.option.minMinutesLeft, session.marketMinutes * (1 - decayed(i / n, rules.option.shield, session)));
   const iv = ivAt(market, i, rules);
   const p = bs(market.ticks[i], market.strike, minutesLeft / TRADING_MINUTES_PER_YEAR, iv);
   return { call: cents(p.call), put: cents(p.put), iv, minutesLeft };
