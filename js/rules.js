@@ -1,5 +1,7 @@
 // Firm rules and account maths. Pure: no DOM, no timers.
-import { TIER1, PERKS } from './config.js';
+import { TIER1, PERKS, EDGES, MANDATES } from './config.js';
+
+const edgeById = (id) => EDGES.find((e) => e.id === id);
 
 export const RULE_TEXT = {
   dailyLoss: { name: 'Daily loss limit', detail: (r) => `You lost $${r.dailyLossLimit.toLocaleString('en-US')} in one day, counting open P&L.` },
@@ -9,17 +11,51 @@ export const RULE_TEXT = {
   minDays: { name: 'Minimum trading days', detail: (r) => `You need at least ${r.minTradingDays} days with a trade.` },
 };
 
-/** Tier rules with the run's perks applied (Thick Skin widens the daily loss limit). */
-export function effectiveRules(perks = [], rules = TIER1) {
+/**
+ * Tier rules for today with the run's perks, the career's edges and mandates
+ * applied. `career` is edges.careerOf(run): {edges, mandates, hot}.
+ */
+export function effectiveRules(perks = [], rules = TIER1, career = {}) {
+  const edges = career.edges || [];
+  const mandates = career.mandates || [];
   const out = { ...rules };
-  const thick = PERKS.find((p) => p.id === 'thickSkin');
-  if (perks.includes('thickSkin')) out.dailyLossLimit = Math.round(rules.dailyLossLimit * (1 + thick.lossBuffer));
+  let loss = 1;
+  if (perks.includes('thickSkin')) loss += PERKS.find((p) => p.id === 'thickSkin').lossBuffer;
+  if (edges.includes('riskFriend')) loss += edgeById('riskFriend').lossBuffer;
+  if (mandates.includes('tightLeash')) loss -= MANDATES.find((m) => m.id === 'tightLeash').lossCut;
+  if (loss !== 1) out.dailyLossLimit = Math.round(rules.dailyLossLimit * loss);
+  if (edges.includes('shortWeek')) out.profitTarget = Math.round(rules.profitTarget * (1 - edgeById('shortWeek').targetCut));
+  if (edges.includes('coffee')) out.clockScale = 1 + edgeById('coffee').slowdown;
+  if (career.hot) {
+    // Hot Hand: MAX buys 25% more today (buying power, contracts, or premium budget).
+    const k = 1 + edgeById('hotHand').sizeBoost;
+    if (rules.option) {
+      out.option = { ...rules.option, premiumBudget: Math.round(rules.option.premiumBudget * k) };
+      out.maxContracts = Math.round(rules.maxContracts * k);
+    } else if (rules.contract) out.maxContracts = Math.round(rules.maxContracts * k);
+    else out.buyingPowerMultiplier = Math.round(rules.buyingPowerMultiplier * k * 100) / 100;
+    out.hot = true;
+  }
+  if (edges.includes('thetaShield') && rules.option) {
+    const t = edgeById('thetaShield');
+    out.option = { ...(out.option || rules.option), shield: { untilMinute: t.untilMinute, rate: t.rate } };
+  }
+  if (mandates.includes('maxOnly')) {
+    out.sizes = rules.sizes.filter((s) => s.label === 'MAX');
+    out.defaultSizeIndex = 0;
+  }
+  if (mandates.includes('noFlatten')) out.noFlatten = true;
+  if (mandates.includes('blindNews')) out.blindNews = true;
   return out;
 }
 
-export function newRun(rules = TIER1, seed = (Math.random() * 2 ** 32) >>> 0, perks = []) {
+export function newRun(rules = TIER1, seed = (Math.random() * 2 ** 32) >>> 0, perks = [], career = {}) {
   const mull = PERKS.find((p) => p.id === 'mulligan');
   return {
+    edges: [...(career.edges || [])],       // picked after days survived; kept through promotions
+    mandates: [...(career.mandates || [])], // handicaps chosen before the career
+    rewinds: career.rewinds || 0,           // Rewind edge uses left
+    draft: null,                            // pending edge pick: {key, rerolls}
     seed,
     tier: rules.id || 'tier1',
     perks: [...perks],       // snapshot at run start

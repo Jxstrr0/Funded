@@ -5,7 +5,7 @@ import { PERKS, REPUTATION } from './config.js';
 const KEY = 'funded.meta.v1';
 
 export function defaultMeta() {
-  return { rep: 0, owned: [], tutorialDone: false, runs: 0, passes: 0 };
+  return { rep: 0, owned: [], tutorialDone: false, runs: 0, passes: 0, mandates: [] };
 }
 
 export function loadMeta() {
@@ -23,9 +23,10 @@ export function saveMeta(meta) {
 
 /**
  * Reputation for a finished run. `history` holds the closed days; a firing
- * mid-day doesn't count that day as survived.
+ * mid-day doesn't count that day as survived. `mult` is the career's Rep
+ * multiplier (mandates, Rainmaker).
  */
-export function reputationFor(history, passed, cfg = REPUTATION) {
+export function reputationFor(history, passed, cfg = REPUTATION, mult = 1) {
   const survived = history.length;
   const bestDay = Math.max(0, ...history.map((d) => d.pnl));
   const parts = {
@@ -33,7 +34,9 @@ export function reputationFor(history, passed, cfg = REPUTATION) {
     bestDay: Math.floor(bestDay / cfg.bestDayDollarsPerRep),
     pass: passed ? cfg.passBonus : 0,
   };
-  return { total: parts.days + parts.bestDay + parts.pass, parts };
+  const base = parts.days + parts.bestDay + parts.pass;
+  const total = Math.round(base * mult);
+  return { total, base, mult, parts: { ...parts, bonus: total - base } };
 }
 
 export function canBuy(meta, id) {

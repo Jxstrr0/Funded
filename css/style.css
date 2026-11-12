@@ -257,7 +257,7 @@ button:focus-visible { outline: 0.5cqw solid var(--lilac); outline-offset: 0.3cq
   cursor: pointer;
 }
 .paused-title { font-size: 6cqw; font-weight: 700; color: var(--lilac); letter-spacing: 0.06em; text-transform: uppercase; }
-.paused-sub { font-size: 3cqw; color: var(--dim); }
+.paused-sub { font-size: 3cqw; color: var(--dim); text-align: center; max-width: 80%; }
 
 /* ---------- Bottom monitor ---------- */
 
@@ -529,6 +529,11 @@ button:focus-visible { outline: 0.5cqw solid var(--lilac); outline-offset: 0.3cq
 }
 .perk .buy:disabled { background: transparent; color: rgba(250, 249, 245, 0.45); border: 1px solid rgba(250, 249, 245, 0.2); }
 .rep { color: var(--clay-light); font-weight: 700; }
+.perk h3 .rep { font-size: 3cqw; margin-left: 1cqw; }
+.perk .buy.toggle { background: transparent; color: rgba(250, 249, 245, 0.7); border: 1px solid rgba(250, 249, 245, 0.3); min-width: 12cqw; }
+.perk .buy.toggle.on { background: var(--lilac); color: var(--slate); border-color: var(--lilac); }
+.perk.edge.rare h3 { color: var(--lilac); }
+.perk .tag { font-size: 2.4cqw; letter-spacing: 0.08em; padding: 0.3cqw 1cqw; border-radius: 1cqw; border: 1px solid var(--lilac); color: var(--lilac); vertical-align: middle; margin-left: 1cqw; }
 
 .fine { font-size: 2.8cqw; color: rgba(250, 249, 245, 0.45); margin-top: 3cqw; text-align: center; }
 

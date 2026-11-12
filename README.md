@@ -17,6 +17,7 @@ Play: https://funded.longlight.games (GitHub Pages, `main` branch root)
 - **Stage 6: options tier.** Done. Pass Tier 2 to move up to $100k options: CALL / PUT / CLOSE on one strike a day, with time decay and an earnings volatility crush.
 - **Sound:** ElevenLabs effects, ambience and music. Toggle on the title screen or with M.
 - **Stage 7: polish.** Done. Card transitions, screen flashes, floating P&L, haptics, and a desk that changes as your career climbs (and a cardboard box when you're fired).
+- **Roguelike layer.** Pick an edge after every day you survive (kept for the career, lost when fired), take on optional mandates for more Rep, and buy Pre-market, Reroll, Analyst and Head Start in the perk shop.
 
 ## Tuning
 
@@ -26,6 +27,7 @@ Every number lives in `js/config.js`:
 - `TIER2` (futures) and `TIER3` (options): the same rules, plus the contract, premium budget, implied volatility and earnings shock settings.
 - `SESSION`: day length (180 s), candles, ticks per candle, bell warning.
 - `PERKS`, `REPUTATION`, `TUTORIAL`: perk costs and effects, Rep formula, the scripted training day.
+- `EDGES`, `EDGE_CHOICES`, `MANDATES`: the edge cards picked during a career (effects and how often each is offered; `weight: 1` is rare) and the optional handicaps with their Rep bonuses.
 - `ENGINE`: volatility, trend drift, regimes, intraday U-curve, news count, jump cap (`shockCapShareOfDailyLimit`).
 
 Screen positions are CSS variables at the top of `css/style.css` (`--top-*`, `--bot-*`, the intro zoom values).
@@ -52,6 +54,7 @@ js/audio.js       sound: ElevenLabs files in assets/audio/, synth fallback
 js/fx.js          juice: flashes, P&L pops, haptics, backdrop crossfades
 js/save.js        localStorage save and resume
 js/meta.js        Reputation, perk shop, tutorial flag
+js/edges.js       edge drafts, mandates, Rep multiplier (pure)
 js/tutorial.js    guided training day
 js/main.js        boot, intro, game loop and state machine
 assets/           desk.jpg, desk-tier2.jpg, desk-tier3.jpg, desk-fired.jpg (gameplay), wide.jpg (intro), audio/

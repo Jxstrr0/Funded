@@ -1,8 +1,9 @@
 // Boot, intro, and the game state machine.
-import { TIER1, TIERS, SESSION, PERKS, TUTORIAL, STUDIO } from './config.js';
+import { TIER1, TIERS, SESSION, PERKS, TUTORIAL, STUDIO, EDGES, MANDATES, REGIME_TEXT } from './config.js';
 import * as fx from './fx.js';
 import { generateDay, candlesUpTo, hashSeed, bookAt } from './engine.js';
-import { newRun, newDay, applyFill, orderDelta, optionOrder, snapshot, closeDay, RULE_TEXT, effectiveRules, applyMulligan } from './rules.js';
+import { newRun, newDay, applyFill, orderDelta, optionOrder, snapshot, closeDay, RULE_TEXT, effectiveRules, applyMulligan, openPnl } from './rules.js';
+import { edgeById, mandateById, careerOf, openDraft, draftOffer, rerollDraft, rerollsAllowed, takeEdge, headStart, repMultiplier } from './edges.js';
 import { quoteAt } from './options.js';
 import { loadMeta, saveMeta, reputationFor, buyPerk, canBuy } from './meta.js';
 import { createTutorial } from './tutorial.js';
@@ -34,10 +35,12 @@ const S = {
   allow: null,        // tutorial: allowed actions, null = all
   wired: new Set(),   // Newswire: headlines already announced early
   tgtMet: false,      // target meter already full (for the one-time pop)
+  tape: [],           // Rewind edge: recent day snapshots [{elapsed, day, revealed}]
 };
 
 let meta = loadMeta();
 const has = (perk) => !S.tutorial && S.run?.perks?.includes(perk);
+const hasEdge = (id) => !S.tutorial && !!S.run?.edges?.includes(id);
 
 let chart;
 const tierOf = (run) => TIERS[run?.tier] || TIER1;
@@ -46,9 +49,15 @@ const tierOf = (run) => TIERS[run?.tier] || TIER1;
 function useRules(rules) {
   RULES = rules;
   ui.setSizes(RULES.sizes, RULES.option ? 'premium budget' : 'buying power');
-  ui.setActionLabels(RULES.option ? ['CALL', 'PUT', 'CLOSE'] : ['BUY', 'SELL', 'FLATTEN']);
+  ui.setActionLabels(RULES.option ? ['CALL', 'PUT', 'CLOSE'] : ['BUY', 'SELL', RULES.noFlatten ? 'NO FLAT' : 'FLATTEN']);
+  S.sizeIndex = Math.min(S.sizeIndex, RULES.sizes.length - 1);
   if (!RULES.option) ui.renderOptions(null);
   fx.setBackdrop(RULES.backdrop);
+}
+
+/** Today's rules for the run: tier + perks + the career's edges and mandates. */
+function applyRunRules() {
+  useRules(effectiveRules(S.run.perks || [], tierOf(S.run), careerOf(S.run)));
 }
 
 // ---------- helpers ----------
@@ -59,6 +68,10 @@ const dayLabel = () => (S.tutorial ? 'Training' : `Day ${S.run.day} of ${RULES.e
 const allowed = (kind) => !S.allow || S.allow.includes(kind);
 const newsTime = (n) => ui.clockText(SESSION.marketOpenMinute + n.candle * SESSION.candleMinutes);
 const newsTimes = () => S.market.news.map((n) => newsTime(n) + (n.earnings ? ' (earnings)' : '')).join(' · ');
+const clockScale = () => RULES.clockScale || 1; // Coffee edge: the session runs slower
+const bellLeft = () => Math.ceil((DAY_MS - S.elapsed) * clockScale() / 1000); // the bell countdown, in seconds
+/** Tape Reader: a news marker shows its direction this close to the headline. */
+const tapeLead = () => (hasEdge('tapeReader') ? edgeById('tapeReader').leadSeconds * 1000 / clockScale() : 0);
 
 // Options tier: premiums at a tick, and the price a position is marked at
 // (the underlying, or the held side's premium).
@@ -81,7 +94,7 @@ function render() {
     const q = quotesAt(S.day.tick);
     const earn = S.market.news.find((n) => n.earnings);
     const done = earn && S.revealed.has(earn.tick);
-    ui.renderOptions({ strike: S.market.strike, call: q.call, put: q.put, iv: q.iv, earnings: earn ? (done ? 'IV CRUSHED' : `EARNINGS ${newsTime(earn)}`) : '' });
+    ui.renderOptions({ strike: S.market.strike, call: q.call, put: q.put, iv: q.iv, earnings: earn ? (done ? 'IV CRUSHED' : RULES.blindNews ? 'EARNINGS TODAY' : `EARNINGS ${newsTime(earn)}`) : '' });
   }
   chart.draw({
     candles: S.day.tick >= 0 ? candlesUpTo(S.market, S.day.tick) : [],
@@ -89,7 +102,11 @@ function render() {
     avg: RULES.option ? S.market.strike : S.day.qty ? S.day.avg : null,
     avgLabel: RULES.option ? `STRIKE ${S.market.strike}` : undefined,
     qty: S.day.qty,
-    news: S.market.news.map((n) => ({ candle: n.candle, dir: n.dir, revealed: S.revealed.has(n.tick) })),
+    news: S.market.news.map((n) => {
+      const hinted = n.tick * TICK_MS - S.elapsed <= tapeLead();
+      const revealed = S.revealed.has(n.tick) || hinted;
+      return { candle: n.candle, dir: n.dir, revealed, hidden: RULES.blindNews && !revealed };
+    }),
   });
   S.dirty = false;
   return snap;
@@ -110,15 +127,16 @@ function persist(force = false) {
 }
 
 function resumeSaved(data) {
-  S.run = data.run;
-  useRules(effectiveRules(S.run.perks || [], tierOf(S.run)));
+  S.run = { edges: [], mandates: [], rewinds: 0, draft: null, ...data.run }; // saves from before edges existed
+  applyRunRules();
   S.sizeIndex = Math.min(data.sizeIndex ?? RULES.defaultSizeIndex, RULES.sizes.length - 1);
-  if (!data.live) { openDay(); return; }
+  if (!data.live) { afterDraft(openDay); return; }
   S.day = data.live.day;
   S.market = generateDay({ seed: hashSeed(S.run.seed, S.run.day), dayStartBalance: S.day.startBalance, rules: RULES });
   S.elapsed = data.live.elapsed;
   S.revealed = new Set(data.live.revealed);
   S.wired = new Set(data.live.revealed);
+  S.tape = [];
   S.lastWarnSec = null;
   ui.hideCard();
   ui.hideNews();
@@ -158,6 +176,12 @@ function tradeOption(right) {
 
 function flatten() {
   if (S.phase !== 'running' || S.day.qty === 0 || !allowed('flat')) return;
+  if (RULES.noFlatten && !(RULES.option && bellLeft() <= SESSION.bellWarningSeconds)) {
+    sfx.denied();
+    ui.flashDenied(RULES.option ? 'CLOSE IN THE LAST 20s' : 'NO FLATTEN · MANDATE');
+    setTimeout(() => (S.dirty = true), 950);
+    return;
+  }
   fill(-S.day.qty, mark(), 0);
   sfx.flat();
   S.tutorial?.onTrade('flat');
@@ -190,16 +214,63 @@ function processTick(i) {
     S.tutorial?.onNews();
   }
   if (S.tutorial || S.day.locked) return true; // no firing in training or on a locked desk
+  if (hasEdge('stopDiscipline') && S.day.qty && openPnl(S.day, markAt(i)) <= -edgeById('stopDiscipline').atShareOfLimit * RULES.dailyLossLimit) {
+    fill(-S.day.qty, markAt(i), 0);
+    sfx.flat();
+    ui.showNotice('STOP DISCIPLINE · position flattened');
+  }
   const snap = snapshot(S.run, S.day, markAt(i), RULES);
-  if (snap.breach) return breach(snap.breach);
+  if (snap.breach) return breach(snap.breach) === 'mulligan';
   return true;
 }
 
-/** A rule broke. Mulligan forgives it once per eval; otherwise you're fired. Returns true if play continues. */
+/**
+ * A rule broke. Rewind (an edge) winds the tape back and pauses; Mulligan
+ * forgives it once per eval; otherwise you're fired. Returns what happened:
+ * 'rewind' | 'mulligan' | 'fired'.
+ */
 function breach(rule) {
-  if (S.run.mulligans > 0) { useMulligan(rule); return true; }
+  if (S.run.rewinds > 0 && S.tape.length) { rewind(rule); return 'rewind'; }
+  if (S.run.mulligans > 0) { useMulligan(rule); return 'mulligan'; }
   fire(rule);
-  return false;
+  return 'fired';
+}
+
+/** Rewind edge: restore the day as it was a few seconds ago, paused. */
+function rewind(rule) {
+  const back = edgeById('rewind').seconds * 1000 / clockScale();
+  const at = S.elapsed - back;
+  const snap = [...S.tape].reverse().find((t) => t.elapsed <= at) || S.tape[0];
+  S.day = structuredClone(snap.day);
+  S.elapsed = snap.elapsed;
+  S.revealed = new Set(snap.revealed);
+  S.wired = new Set(snap.revealed);
+  S.tape = S.tape.filter((t) => t.elapsed <= snap.elapsed);
+  S.run = { ...S.run, rewinds: S.run.rewinds - 1 };
+  S.lastWarnSec = null;
+  S.phase = 'paused';
+  ui.hideNews();
+  ui.setBell(null);
+  ui.setPaused(true, { title: 'Rewind', sub: `${RULE_TEXT[rule].name}. The tape went back ${Math.round(back * clockScale() / 1000)}s. Tap to resume and fix it.` });
+  ui.setTradingEnabled(false);
+  fx.danger(false);
+  fx.screenFlash('bell');
+  fx.buzz([30, 40, 30]);
+  sfx.mulligan();
+  setScene('quiet');
+  render();
+  ui.showNotice(`REWIND USED · ${RULE_TEXT[rule].name}`);
+  persist(true);
+}
+
+/** Keep a snapshot of the day every half second of session time, for Rewind. */
+function recordTape() {
+  if (!S.run.rewinds || S.tutorial) return;
+  const lastT = S.tape[S.tape.length - 1];
+  if (lastT && S.elapsed - lastT.elapsed < 500) return;
+  S.tape.push({ elapsed: S.elapsed, day: structuredClone(S.day), revealed: [...S.revealed] });
+  const keep = (edgeById('rewind').seconds + 5) * 1000;
+  while (S.tape.length && S.tape[0].elapsed < S.elapsed - keep) S.tape.shift();
 }
 
 function useMulligan(rule) {
@@ -232,7 +303,7 @@ function frame(now) {
   requestAnimationFrame(frame);
   if (S.phase !== 'running' || S.hold) { S.prevNow = null; return; }
   if (S.prevNow == null) S.prevNow = now;
-  const dt = Math.min(now - S.prevNow, SESSION.maxFrameMs) * SPEED;
+  const dt = (Math.min(now - S.prevNow, SESSION.maxFrameMs) * SPEED) / clockScale();
   S.prevNow = now;
   S.elapsed = Math.min(DAY_MS, S.elapsed + dt);
 
@@ -241,6 +312,8 @@ function frame(now) {
     if (!processTick(i)) return;
     S.dirty = true;
   }
+  recordTape();
+  if (tapeLead()) S.dirty = true; // Tape Reader markers appear between ticks
 
   // Newswire: headline and direction a few seconds early.
   if (has('newswire')) {
@@ -256,9 +329,9 @@ function frame(now) {
   }
 
   // Bell countdown.
-  const left = Math.ceil((DAY_MS - S.elapsed) / 1000);
+  const left = bellLeft();
   if (left <= SESSION.bellWarningSeconds && left > 0) {
-    ui.setBell(left, S.day.qty !== 0, RULES.option ? 'CLOSE' : 'FLATTEN');
+    ui.setBell(left, S.day.qty !== 0, RULES.option ? 'CLOSE' : RULES.noFlatten ? 'CLOSE OUT' : 'FLATTEN');
     if (left !== S.lastWarnSec) { S.lastWarnSec = left; sfx.warn(S.day.qty !== 0); }
   }
 
@@ -295,22 +368,122 @@ window.addEventListener('pagehide', pause);
 
 // ---------- flow ----------
 
-/** Start an eval. A new career starts at Tier 1 with the perks owned now. */
-function startRun(tierId = 'tier1', perks = meta.owned) {
+/**
+ * Start an eval. A new career starts at Tier 1 with the perks owned now and
+ * the mandates chosen for it (Head Start adds a random edge).
+ */
+function startRun(tierId = 'tier1', perks = meta.owned, mandates = []) {
   clearRun();
   endTutorial();
-  useRules(effectiveRules(perks, TIERS[tierId]));
-  S.run = newRun(RULES, undefined, perks);
+  S.run = headStart(newRun(TIERS[tierId], undefined, perks, { mandates }));
+  applyRunRules();
   S.sizeIndex = RULES.defaultSizeIndex;
   openDay();
 }
 
+/** New career from a menu: first choose mandates (once the player has finished a run). */
+function newCareer() {
+  if (meta.runs < 1) return intro(() => startRun());
+  mandateCard(new Set(meta.mandates || []));
+}
+
+function mandateCard(picked) {
+  const bonus = [...picked].reduce((s, id) => s + mandateById(id).repBonus, 0);
+  const list = MANDATES.map((m) => {
+    const on = picked.has(m.id);
+    return `<div class="perk edge"><h3>${ui.esc(m.name)} <span class="rep">+${Math.round(m.repBonus * 100)}% Rep</span></h3><p>${ui.esc(m.desc)}</p>
+      <button class="buy toggle${on ? ' on' : ''}" aria-pressed="${on}" data-action="m_${m.id}">${on ? 'On' : 'Off'}</button></div>`;
+  }).join('');
+  const actions = {
+    go: () => {
+      meta = { ...meta, mandates: [...picked] };
+      saveMeta(meta);
+      intro(() => startRun('tier1', meta.owned, [...picked]));
+    },
+    back: title,
+  };
+  for (const m of MANDATES) {
+    actions['m_' + m.id] = () => {
+      const next = new Set(picked);
+      next.has(m.id) ? next.delete(m.id) : next.add(m.id);
+      mandateCard(next);
+    };
+  }
+  ui.showCard(`
+    <div class="eyebrow">New career · mandates</div>
+    <h2>Rep <span class="rep">x${(1 + bonus).toFixed(2)}</span></h2>
+    <p style="font-size:3.2cqw">Optional handicaps for the whole career. Each one adds Rep, win or lose.</p>
+    ${list}
+    <button class="cta" data-action="go" style="margin-top:4cqw">Start eval</button>
+    <button class="cta ghost small" data-action="back">Back</button>
+  `, actions);
+}
+
+// ---------- edges ----------
+
+/** Show the pending edge pick, if any, then carry on with `next`. */
+function afterDraft(next) {
+  const offer = draftOffer(S.run);
+  if (!S.run.draft || !offer.length) {
+    if (S.run.draft) { S.run = { ...S.run, draft: null }; persist(true); }
+    return next();
+  }
+  const left = rerollsAllowed(S.run.perks) - S.run.draft.rerolls;
+  const cards = offer.map((id) => {
+    const e = edgeById(id);
+    return `<div class="perk edge${e.weight <= 1 ? ' rare' : ''}"><h3>${ui.esc(e.name)}${e.weight <= 1 ? ' <span class="tag">RARE</span>' : ''}</h3><p>${ui.esc(e.desc)}</p>
+      <button class="buy" data-action="e_${id}">Take</button></div>`;
+  }).join('');
+  const actions = {
+    reroll: () => { S.run = rerollDraft(S.run); persist(true); sfx.flat(); afterDraft(next); },
+  };
+  for (const id of offer) {
+    actions['e_' + id] = () => {
+      S.run = takeEdge(S.run, id);
+      persist(true);
+      sfx.rep();
+      next();
+    };
+  }
+  const held = S.run.edges.map((id) => edgeById(id).name).join(', ');
+  ui.showCard(`
+    <div class="eyebrow">Pick an edge</div>
+    <h2>Pick one for the career</h2>
+    <p style="font-size:3.2cqw">Edges stack and last until you're fired. Promotions keep them.</p>
+    ${cards}
+    ${left > 0 ? `<button class="cta ghost small" data-action="reroll" style="margin-top:3cqw">Reroll (${left} left)</button>` : ''}
+    ${held ? `<div class="fine">Held: ${ui.esc(held)}</div>` : ''}
+  `, actions);
+}
+
+function careerRows() {
+  const r = S.run;
+  const out = [];
+  if (r.edges.length) out.push(['Edges', r.edges.map((id) => edgeById(id).name).join(', ') + (r.edges.includes('rewind') ? ` (${r.rewinds} rewind left)` : '')]);
+  if (r.mandates.length) out.push(['Mandates', r.mandates.map((id) => mandateById(id).name).join(', ')]);
+  return out;
+}
+
+/** Day-open lines from perks and edges: the morning's trend, the first headline. */
+function insightRows() {
+  const out = [];
+  if (RULES.hot) out.push(['Hot Hand', 'MAX +25% today', 'up']);
+  if (has('premarket')) out.push(['Pre-market', REGIME_TEXT[S.market.regimes[0]] || '']);
+  if (hasEdge('whisper') && S.market.news.length) {
+    const n = S.market.news[0];
+    out.push(['Whisper', `${RULES.blindNews ? 'First headline' : newsTime(n)}: ${n.dir > 0 ? '▲ good news' : '▼ bad news'}`, n.dir > 0 ? 'up' : 'down']);
+  }
+  return out;
+}
+
 function openDay() {
+  applyRunRules();
   S.day = newDay(S.run, RULES);
   S.market = generateDay({ seed: hashSeed(S.run.seed, S.run.day), dayStartBalance: S.day.startBalance, rules: RULES });
   S.elapsed = 0;
   S.revealed = new Set();
   S.wired = new Set();
+  S.tape = [];
   S.lastWarnSec = null;
   S.tgtMet = true; // no pop for a target already met before the open
   S.phase = 'dayopen';
@@ -327,7 +500,7 @@ function openDay() {
   ui.showCard(`
     <div class="eyebrow">${ui.esc(RULES.name.split(' · ')[0])} · Day ${r.day} of ${RULES.evalDays}</div>
     <h2>${ui.esc(S.market.ticker)} <span style="font-weight:500;color:rgba(250,249,245,.6)">opens $${S.market.open.toFixed(2)}</span></h2>
-    <p>News at <b>${newsTimes()}</b>. Marked on the clock.</p>
+    ${RULES.blindNews ? `<p>News times hidden (Blind News). ${S.market.news.length} headline${S.market.news.length > 1 ? 's' : ''} today.</p>` : `<p>News at <b>${newsTimes()}</b>. Marked on the clock.</p>`}
     ${RULES.option && r.day === 1 ? `<p>Options: tap <b>CALL</b> if you think it rises, <b>PUT</b> if it falls. You can only lose what you paid. Premium melts as the day runs, gets pumped before earnings, and is crushed the moment they land.</p>` : ''}
     ${RULES.contract && r.day === 1 ? `<p>Futures: you trade whole <b>contracts</b>. Every ${RULES.contract.tickSize.toFixed(2)} tick is <b>$${RULES.contract.tickValue.toFixed(2)}</b> a contract. Max is ${RULES.maxContracts}, and it moves fast.</p>` : ''}
     ${ui.rows([
@@ -342,6 +515,8 @@ function openDay() {
       ['Target balance', ui.money(RULES.startBalance + RULES.profitTarget)],
       ['Trading days counted', counted],
       ...(r.perks.length ? [['Perks', r.perks.map((id) => PERKS.find((p) => p.id === id).name).join(', ') + (r.perks.includes('mulligan') ? ` (${r.mulligans} mulligan left)` : '')]] : []),
+      ...careerRows(),
+      ...insightRows(),
     ])}
     <button class="cta" data-action="go">Open the market</button>
     <div class="fine">${RULES.option ? 'Close every contract' : 'Be flat'} by the 16:00 bell or you're fired.</div>
@@ -371,11 +546,11 @@ function closingBell() {
   fx.danger(false);
   setScene('menu');
   if (S.tutorial) return finishTutorial(S.day.qty !== 0);
-  if (S.day.qty !== 0 && !breach('flatAtBell')) return;
+  if (S.day.qty !== 0 && breach('flatAtBell') !== 'mulligan') return;
 
   const { run, outcome, result } = closeDay(S.run, S.day, RULES);
   const prevFloor = S.run.floor;
-  S.run = run;
+  S.run = outcome === 'next' ? openDraft(run) : run;
   if (outcome === 'next') persist(true);
   else clearRun();
   if (outcome === 'pass') return passed();
@@ -394,8 +569,8 @@ function closingBell() {
       ['Drawdown floor', run.floor !== prevFloor ? `${ui.money(prevFloor)} → ${ui.money(run.floor)}` : ui.money(run.floor)],
       ['Days left', String(RULES.evalDays - result.day)],
     ])}
-    <button class="cta" data-action="next">Next day</button>
-  `, { next: openDay });
+    <button class="cta" data-action="next">${draftOffer(S.run).length ? 'Pick an edge' : 'Next day'}</button>
+  `, { next: () => afterDraft(openDay) });
 }
 
 function fire(rule) {
@@ -428,7 +603,7 @@ function fire(rule) {
     ])}
     <button class="cta" data-action="again">New eval</button>
     <button class="cta ghost" data-action="shop">Perk shop</button>
-  `, { again: () => startRun(), shop: () => shop(() => startRun()) });
+  `, { again: newCareer, shop: () => shop(newCareer) });
 }
 
 function evalOver(rule) {
@@ -449,11 +624,11 @@ function evalOver(rule) {
     ])}
     <button class="cta" data-action="again">New eval</button>
     <button class="cta ghost" data-action="shop">Perk shop</button>
-  `, { again: () => startRun(), shop: () => shop(() => startRun()) });
+  `, { again: newCareer, shop: () => shop(newCareer) });
 }
 
 function careerNote() {
-  return S.run.tier !== 'tier1' ? '<p style="font-size:3.2cqw">Your next career starts back at Tier 1. Rep and perks stay.</p>' : '';
+  return S.run.tier !== 'tier1' ? '<p style="font-size:3.2cqw">Your next career starts back at Tier 1. Rep and perks stay; edges are lost.</p>' : '';
 }
 
 function passed() {
@@ -476,7 +651,7 @@ function passed() {
     <button class="cta" data-action="again">New eval</button>
     <button class="cta ghost" data-action="shop">Perk shop</button>
     <div class="fine">Top of the ladder. You've earned the window seat.</div>
-  `, { again: () => startRun(), shop: () => shop(() => startRun()) });
+  `, { again: newCareer, shop: () => shop(newCareer) });
 }
 
 /** Passed a tier with another above it: the career moves up. Saved straight
@@ -485,7 +660,7 @@ function promoted(r, rep) {
   const next = TIERS[RULES.next];
   const perks = r.perks;
   const from = RULES;
-  S.run = newRun(effectiveRules(perks, next), undefined, perks);
+  S.run = openDraft(newRun(next, undefined, perks, { edges: r.edges, mandates: r.mandates, rewinds: r.rewinds }));
   persist(true);
   ui.showCard(`
     <div class="eyebrow">Eval passed · promoted</div>
@@ -499,14 +674,14 @@ function promoted(r, rep) {
       ...repRows(rep),
     ])}
     <button class="cta" data-action="go">Start ${ui.esc(next.short)}</button>
-    <div class="fine">Get fired up there and the next career starts at Tier 1.</div>
-  `, { go: () => { useRules(effectiveRules(perks, next)); S.sizeIndex = RULES.defaultSizeIndex; openDay(); } });
+    <div class="fine">Your edges come with you. Get fired up there and the next career starts at Tier 1.</div>
+  `, { go: () => { applyRunRules(); S.sizeIndex = RULES.defaultSizeIndex; afterDraft(openDay); } });
 }
 
 // ---------- reputation and perks ----------
 
 function award(passedEval) {
-  const rep = reputationFor(S.run.history, passedEval);
+  const rep = reputationFor(S.run.history, passedEval, undefined, repMultiplier(S.run));
   meta = { ...meta, rep: meta.rep + rep.total, runs: meta.runs + 1, passes: meta.passes + (passedEval ? 1 : 0) };
   saveMeta(meta);
   if (rep.total > 0) setTimeout(sfx.rep, 1200);
@@ -515,6 +690,7 @@ function award(passedEval) {
 
 function repRows(rep) {
   return [
+    ...(rep.mult !== 1 ? [['Rep bonus', `x${rep.mult.toFixed(2)} (+${rep.parts.bonus})`, 'up']] : []),
     ['Reputation earned', `+${rep.total}`, 'up'],
     ['Reputation banked', String(meta.rep)],
   ];
@@ -532,7 +708,7 @@ function shop(back) {
   ui.showCard(`
     <div class="eyebrow">Perk shop</div>
     <h2>You have <span class="rep">${meta.rep} Rep</span></h2>
-    <p style="font-size:3.2cqw">Perks are permanent and apply from your next new eval. Earn Rep every run, even when you're fired.</p>
+    <p style="font-size:3.2cqw">Perks are permanent and apply from your next new eval. Earn Rep every run, even when you're fired. Edges are different: you pick those during a career.</p>
     ${list}
     <button class="cta" data-action="back" style="margin-top:4cqw">Done</button>
   `, actions);
@@ -627,7 +803,7 @@ function title() {
     <a class="hub" href="${ui.esc(STUDIO.hubUrl)}">${ui.esc(STUDIO.hubLabel)}</a>
   `, {
     audio: () => { cycleAudioMode(); title(); },
-    start: () => intro(fresh ? startTutorial : () => startRun()),
+    start: () => (fresh ? intro(startTutorial) : newCareer()),
     cont: () => intro(() => resumeSaved(saved)),
     shop: () => shop(title),
     tut: () => intro(startTutorial),
@@ -653,7 +829,12 @@ async function boot() {
     onBuy: () => trade(1),
     onSell: () => trade(-1),
     onFlat: flatten,
-    onSize: (i) => { S.sizeIndex = i; if (S.run) S.dirty = true; if (S.phase !== 'running' && S.run) render(); },
+    onSize: (i) => {
+      if (i >= RULES.sizes.length) return; // Max Only leaves one size
+      S.sizeIndex = i;
+      if (S.run) S.dirty = true;
+      if (S.phase !== 'running' && S.run && S.day) render();
+    },
     onPause: pause,
     onResume: resume,
     onTogglePause: () => (S.phase === 'running' ? pause() : resume()),

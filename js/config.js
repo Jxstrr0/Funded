@@ -189,7 +189,40 @@ export const PERKS = [
   { id: 'newswire', name: 'Newswire', cost: 80, desc: 'Headlines arrive 5 seconds early.', leadSeconds: 5 },
   { id: 'level2', name: 'Level 2', cost: 120, desc: 'See the order book: bid and ask pressure.' },
   { id: 'mulligan', name: 'Mulligan', cost: 150, desc: 'Survive one rule break per eval. You are flattened and the desk locks for the day.', uses: 1, floorRoomDailyLimits: 1 },
+  { id: 'premarket', name: 'Pre-market', cost: 70, desc: "The day-open card shows the morning's trend: up, down, choppy or wild." },
+  { id: 'reroll', name: 'Reroll', cost: 90, desc: 'Reroll the edge choices once after each day.', rerolls: 1 },
+  { id: 'analyst', name: 'Analyst', cost: 100, desc: 'Choose from 4 edges instead of 3.', extraChoices: 1 },
+  { id: 'headStart', name: 'Head Start', cost: 140, desc: 'Every career starts with one random edge.' },
 ];
+
+// Edges: after each day you survive, pick 1 of 3 random cards. An edge lasts
+// for the rest of the career (promotions keep it) and is gone when you're
+// fired. weight: how often it is offered (rare = 1). tiers: offered only there.
+export const EDGE_CHOICES = 3;
+export const EDGES = [
+  { id: 'rewind', name: 'Rewind', weight: 1, desc: 'Once per career, a rule break rewinds the tape 10 seconds and pauses instead.', seconds: 10, uses: 1 },
+  { id: 'hotHand', name: 'Hot Hand', weight: 3, desc: 'After a green day, MAX size is 25% bigger the next day.', sizeBoost: 0.25 },
+  { id: 'stopDiscipline', name: 'Stop Discipline', weight: 3, desc: "Auto-flatten when a position's open loss reaches 60% of the daily limit.", atShareOfLimit: 0.6 },
+  { id: 'tapeReader', name: 'Tape Reader', weight: 3, desc: 'News markers show ▲ or ▼ 3 seconds before the headline hits.', leadSeconds: 3 },
+  { id: 'riskFriend', name: 'Risk Desk Friend', weight: 3, desc: 'Daily loss limit +10% for the rest of the career.', lossBuffer: 0.10 },
+  { id: 'shortWeek', name: 'Short Week', weight: 2, desc: 'Profit target -8%.', targetCut: 0.08 },
+  { id: 'coffee', name: 'Coffee', weight: 3, desc: 'The clock runs 15% slower.', slowdown: 0.15 },
+  { id: 'whisper', name: 'Whisper', weight: 1, desc: "The day-open card tells you which way the day's first headline goes." },
+  { id: 'rainmaker', name: 'Rainmaker', weight: 2, desc: 'Rep earned this career x1.25.', repBonus: 0.25 },
+  { id: 'thetaShield', name: 'Theta Shield', weight: 2, tiers: ['tier3'], desc: 'Premium decays at half speed until noon, then catches up by the close.', untilMinute: 720, rate: 0.5 },
+];
+
+// Mandates: optional handicaps chosen before a career, for more Rep.
+// repBonus values add up: two mandates worth +20% and +30% pay x1.5.
+export const MANDATES = [
+  { id: 'noFlatten', name: 'No Flatten', repBonus: 0.20, desc: 'No FLATTEN button. Options: CLOSE only works in the last 20 seconds.' },
+  { id: 'tightLeash', name: 'Tight Leash', repBonus: 0.30, desc: 'Daily loss limit -25%.', lossCut: 0.25 },
+  { id: 'blindNews', name: 'Blind News', repBonus: 0.25, desc: 'News times are hidden: no markers on the chart, no times at the open.' },
+  { id: 'maxOnly', name: 'Max Only', repBonus: 0.40, desc: 'Every order is MAX size.' },
+];
+
+// How the morning reads on the day-open card (Pre-market perk).
+export const REGIME_TEXT = { 'trend-up': 'Trending up ▲', 'trend-down': 'Trending down ▼', chop: 'Choppy, no trend', volatile: 'Wild swings' };
 
 // Reputation is earned every run, even failed ones.
 export const REPUTATION = {
