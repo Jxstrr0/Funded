@@ -13,6 +13,7 @@ const buffers = {};
 let loading = false;
 let mode = readMode();
 let scene = 'menu';           // 'menu' | 'day' | 'quiet'
+let raining = false;          // rain on the windows during a rainy day
 const loops = {};             // name -> { src, gain }
 
 function readMode() {
@@ -36,7 +37,7 @@ export function unlockAudio() {
     ctx = new AC();
     const g = (v, to) => { const n = ctx.createGain(); n.gain.value = v; n.connect(to); return n; };
     const master = g(AUDIO.master, ctx.destination);
-    bus = { master, sfx: g(AUDIO.sfx, master), ambience: g(0, master), music: g(0, master), dayMusic: g(0, master) };
+    bus = { master, sfx: g(AUDIO.sfx, master), ambience: g(0, master), music: g(0, master), dayMusic: g(0, master), rain: g(0, master) };
     applyLevels();
     load();
   }
@@ -76,12 +77,19 @@ export function setScene(s) {
   syncLoops();
 }
 
+/** Rain on the windows under the floor ambience (rainy days only). */
+export function setRain(on) {
+  raining = !!on;
+  syncLoops();
+}
+
 function syncLoops() {
   if (!ctx || ctx.state !== 'running') return;
   const loopsOn = mode === 'all';
   fadeLoop('music', loopsOn && scene === 'menu' ? AUDIO.music : 0);
   fadeLoop('ambience', loopsOn && scene === 'day' ? AUDIO.ambience : 0);
   fadeLoop('dayMusic', loopsOn && scene === 'day' ? AUDIO.dayMusic : 0);
+  fadeLoop('rain', loopsOn && scene === 'day' && raining ? AUDIO.rain : 0);
 }
 
 function fadeLoop(name, target) {

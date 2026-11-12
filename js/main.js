@@ -9,7 +9,7 @@ import { loadMeta, saveMeta, reputationFor, buyPerk, canBuy } from './meta.js';
 import { createTutorial } from './tutorial.js';
 import { Chart } from './chart.js';
 import * as ui from './ui.js';
-import { unlockAudio, sfx, setScene, audioMode, cycleAudioMode } from './audio.js';
+import { unlockAudio, sfx, setScene, setRain, audioMode, cycleAudioMode } from './audio.js';
 import { loadRun, saveRun, clearRun } from './save.js';
 
 let RULES = TIER1; // tier rules with the run's perks applied
@@ -63,6 +63,7 @@ const rainDay = (run) => !!run && !S.tutorial && !!tierOf(run).rainBackdrop && r
 function showDesk() {
   const rain = rainDay(S.run) && RULES.rainBackdrop;
   fx.setBackdrop(rain || RULES.backdrop, { tod: !rain });
+  setRain(!!rain);
   syncProps();
 }
 

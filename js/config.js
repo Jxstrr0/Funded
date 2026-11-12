@@ -329,6 +329,7 @@ export const AUDIO = {
   ambience: 0.35,   // trading-floor murmur during a live day
   music: 0.45,      // menu music on the title and between days
   dayMusic: 0.3,    // quieter loop under the ambience during a live day
+  rain: 0.4,        // rain on the windows on rainy days (WEATHER)
   fadeSeconds: 0.8,
   files: {
     buy: 'buy.mp3', sell: 'sell.mp3', flat: 'flatten.mp3', denied: 'denied.mp3',
@@ -336,7 +337,7 @@ export const AUDIO = {
     pass: 'pass.mp3', mulligan: 'mulligan.mp3', rep: 'rep.mp3',
     deal: 'deal.mp3', pick: 'pick.mp3', rare: 'rare.mp3', reroll: 'reroll.mp3',
     stamp: 'stamp.mp3', purchase: 'purchase.mp3',
-    ambience: 'ambience.mp3', music: 'music.mp3', dayMusic: 'day-music.mp3',
+    ambience: 'ambience.mp3', music: 'music.mp3', dayMusic: 'day-music.mp3', rain: 'rain.mp3',
   },
   // Per-sound trim, applied on top of the sfx volume.
   gain: { buy: 0.7, sell: 0.7, flat: 0.8, denied: 0.6, news: 0.8, tick: 0.5, bell: 0.9, fired: 0.9, pass: 0.9, mulligan: 0.8, rep: 0.8,
