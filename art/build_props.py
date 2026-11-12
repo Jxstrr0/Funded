@@ -21,7 +21,7 @@ One file, three roles:
       `--hook art/build_props.py --mouse`, renders a crop of CAM_main around the hero mouse with
       overscan past the frame edge (the mouse hangs off the right and bottom), and writes
       assets/mouse/<tier>-plate[-am|-pm].webp (the desk with the mouse and its shadow removed,
-      opaque with a feathered border) and assets/mouse/<tier>-mouse[-am|-pm].webp (the mouse and
+      opaque) and assets/mouse/<tier>-mouse[-am|-pm].webp (the mouse and
       its contact shadow, straight alpha, same box). `--tods ...,rain` adds -rain layers for the
       --weather rain desks. The box is the same for every tod and
       leaves room for the mouse to slide by MOUSE_TRAVEL. Prints the box for CLICKER.mouse.layout
@@ -344,7 +344,7 @@ def hook(G):
 # =====================================================================================
 FRAME_W, FRAME_H = 1080, 1920
 MOUSE_TRAVEL = (0.014, 0.008)    # the most the game slides the mouse layer, as a fraction of frame W / H
-MOUSE_FEATHER = 12               # px of soft edge on the plate
+MOUSE_FEATHER = 12               # px of spare margin around the mouse's travel
 MOUSE_OVERSCAN = 160             # px rendered past each frame edge
 MOUSE_NAMES = ("mouse", "mouse_wheel", "mouse_seam")
 
@@ -561,12 +561,11 @@ def mouse_hook(G):
     C[alpha < 1e-3] = 0
     save(np.dstack([C, alpha]), mouse_name(tier, "mouse", tod))
 
-    # the plate: the desk without the mouse, opaque, feathered toward the box edges
-    yy, xx = np.mgrid[0:h, 0:w].astype(np.float32)
-    edge = np.minimum(np.minimum(xx + 0.5, w - xx - 0.5), np.minimum(yy + 0.5, h - yy - 0.5))
-    f = np.clip(edge / MOUSE_FEATHER, 0, 1)
-    f = f * f * (3 - 2 * f)
-    save(np.dstack([B, f]), mouse_name(tier, "plate", tod))
+    # the plate: the desk without the mouse, fully opaque. It matches the desk render
+    # to about 1/255, so it needs no soft edge, and a hard one keeps the game's
+    # -am / -pm plates (stacked at partial opacity) compositing exactly like the
+    # desk's own time-of-day layers. MOUSE_FEATHER stays as spare margin in the box.
+    save(np.dstack([B, np.ones((h, w), np.float32)]), mouse_name(tier, "plate", tod))
 
     ys, xs = np.nonzero(alpha > 2 / 255)
     # each side needs room for the travel plus the feather, unless that edge stays off frame
