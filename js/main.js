@@ -1,7 +1,8 @@
 // Boot, intro, and the game state machine.
 import { TIER1, TIERS, SESSION, PERKS, TUTORIAL } from './config.js';
 import { generateDay, candlesUpTo, hashSeed, bookAt } from './engine.js';
-import { newRun, newDay, applyFill, orderDelta, snapshot, closeDay, RULE_TEXT, effectiveRules, applyMulligan } from './rules.js';
+import { newRun, newDay, applyFill, orderDelta, optionOrder, snapshot, closeDay, RULE_TEXT, effectiveRules, applyMulligan } from './rules.js';
+import { quoteAt } from './options.js';
 import { loadMeta, saveMeta, reputationFor, buyPerk, canBuy } from './meta.js';
 import { createTutorial } from './tutorial.js';
 import { Chart } from './chart.js';
@@ -42,7 +43,9 @@ const tierOf = (run) => TIERS[run?.tier] || TIER1;
 /** Switch the active tier's rules (with the run's perks) and its size buttons. */
 function useRules(rules) {
   RULES = rules;
-  ui.setSizes(RULES.sizes);
+  ui.setSizes(RULES.sizes, RULES.option ? 'premium budget' : 'buying power');
+  ui.setActionLabels(RULES.option ? ['CALL', 'PUT', 'CLOSE'] : ['BUY', 'SELL', 'FLATTEN']);
+  if (!RULES.option) ui.renderOptions(null);
 }
 
 // ---------- helpers ----------
@@ -51,18 +54,34 @@ const price = () => S.market.ticks[Math.max(0, S.day.tick)];
 const minuteNow = () => SESSION.marketOpenMinute + (S.elapsed / DAY_MS) * SESSION.marketMinutes;
 const dayLabel = () => (S.tutorial ? 'Training' : `Day ${S.run.day} of ${RULES.evalDays}`);
 const allowed = (kind) => !S.allow || S.allow.includes(kind);
-const newsTimes = () => S.market.news.map((n) => ui.clockText(SESSION.marketOpenMinute + n.candle * SESSION.candleMinutes)).join(' · ');
+const newsTime = (n) => ui.clockText(SESSION.marketOpenMinute + n.candle * SESSION.candleMinutes);
+const newsTimes = () => S.market.news.map((n) => newsTime(n) + (n.earnings ? ' (earnings)' : '')).join(' · ');
+
+// Options tier: premiums at a tick, and the price a position is marked at
+// (the underlying, or the held side's premium).
+const quotesAt = (i) => quoteAt(S.market, Math.max(0, i), RULES);
+const premiumOf = (right, q) => (right === 'C' ? q.call : q.put);
+const markAt = (i) => (RULES.option ? (S.day.right ? premiumOf(S.day.right, quotesAt(i)) : 0) : S.market.ticks[Math.max(0, i)]);
+const mark = () => markAt(S.day.tick);
 
 function render() {
   const last = price();
   ui.renderMarket({ ticker: S.market.ticker, last, open: S.market.open, minute: minuteNow(), dayLabel: dayLabel() });
   ui.renderL2(has('level2') && S.day.tick >= 0 ? bookAt(S.market, S.day.tick) : null);
-  const snap = snapshot(S.run, S.day, last, RULES);
-  ui.renderDesk(snap, S.day, S.sizeIndex);
+  const m = mark();
+  const snap = snapshot(S.run, S.day, m, RULES);
+  ui.renderDesk(snap, S.day, S.sizeIndex, m);
+  if (RULES.option) {
+    const q = quotesAt(S.day.tick);
+    const earn = S.market.news.find((n) => n.earnings);
+    const done = earn && S.revealed.has(earn.tick);
+    ui.renderOptions({ strike: S.market.strike, call: q.call, put: q.put, iv: q.iv, earnings: earn ? (done ? 'IV CRUSHED' : `EARNINGS ${newsTime(earn)}`) : '' });
+  }
   chart.draw({
     candles: S.day.tick >= 0 ? candlesUpTo(S.market, S.day.tick) : [],
     last,
-    avg: S.day.qty ? S.day.avg : null,
+    avg: RULES.option ? S.market.strike : S.day.qty ? S.day.avg : null,
+    avgLabel: RULES.option ? `STRIKE ${S.market.strike}` : undefined,
     qty: S.day.qty,
     news: S.market.news.map((n) => ({ candle: n.candle, dir: n.dir, revealed: S.revealed.has(n.tick) })),
   });
@@ -110,17 +129,30 @@ function resumeSaved(data) {
 function trade(side) {
   if (S.phase !== 'running' || !allowed(side > 0 ? 'buy' : 'sell')) return;
   if (S.day.locked) { sfx.denied(); ui.flashDenied('DESK LOCKED'); return; }
+  if (RULES.option) return tradeOption(side > 0 ? 'C' : 'P');
   const p = price();
   const delta = orderDelta(S.day, side, RULES.sizes[S.sizeIndex], p);
-  if (delta === 0) { sfx.denied(); ui.flashDenied('MAX SIZE'); setTimeout(() => (S.dirty = true), 500); return; }
+  if (delta === 0) { sfx.denied(); ui.flashDenied('MAX SIZE'); setTimeout(() => (S.dirty = true), 950); return; }
   fill(delta, p);
   side > 0 ? sfx.buy() : sfx.sell();
   S.tutorial?.onTrade(side > 0 ? 'buy' : 'sell');
 }
 
+/** Options: CALL or PUT buys contracts of that side. One side at a time. */
+function tradeOption(right) {
+  const denied = (text) => { sfx.denied(); ui.flashDenied(text); setTimeout(() => (S.dirty = true), 950); };
+  if (S.day.qty && S.day.right !== right) return denied(`CLOSE ${S.day.right === 'C' ? 'CALLS' : 'PUTS'} FIRST`);
+  const prem = premiumOf(right, quotesAt(S.day.tick));
+  const n = optionOrder(S.day, RULES.sizes[S.sizeIndex], prem, RULES);
+  if (n === 0) return denied('MAX SIZE');
+  S.day.right = right;
+  fill(n, prem);
+  right === 'C' ? sfx.buy() : sfx.sell();
+}
+
 function flatten() {
   if (S.phase !== 'running' || S.day.qty === 0 || !allowed('flat')) return;
-  fill(-S.day.qty, price());
+  fill(-S.day.qty, mark());
   sfx.flat();
   S.tutorial?.onTrade('flat');
 }
@@ -130,6 +162,7 @@ function fill(delta, p) {
   S.day.qty = r.qty;
   S.day.avg = r.avg;
   S.day.realized += r.realized;
+  if (r.qty === 0) S.day.right = null;
   S.day.trades += 1;
   S.dirty = true;
   persist(true);
@@ -148,7 +181,7 @@ function processTick(i) {
     S.tutorial?.onNews();
   }
   if (S.tutorial || S.day.locked) return true; // no firing in training or on a locked desk
-  const snap = snapshot(S.run, S.day, S.market.ticks[i], RULES);
+  const snap = snapshot(S.run, S.day, markAt(i), RULES);
   if (snap.breach) return breach(snap.breach);
   return true;
 }
@@ -162,8 +195,8 @@ function breach(rule) {
 
 function useMulligan(rule) {
   if (S.day.qty) {
-    const r = applyFill(S.day.qty, S.day.avg, -S.day.qty, price(), S.day.mult ?? 1);
-    S.day.qty = r.qty; S.day.avg = r.avg; S.day.realized += r.realized;
+    const r = applyFill(S.day.qty, S.day.avg, -S.day.qty, mark(), S.day.mult ?? 1);
+    S.day.qty = r.qty; S.day.avg = r.avg; S.day.realized += r.realized; S.day.right = null;
   }
   S.run = applyMulligan(S.run, S.day.startBalance + S.day.realized, RULES);
   S.day.locked = true;
@@ -214,7 +247,7 @@ function frame(now) {
   // Bell countdown.
   const left = Math.ceil((DAY_MS - S.elapsed) / 1000);
   if (left <= SESSION.bellWarningSeconds && left > 0) {
-    ui.setBell(left, S.day.qty !== 0);
+    ui.setBell(left, S.day.qty !== 0, RULES.option ? 'CLOSE' : 'FLATTEN');
     if (left !== S.lastWarnSec) { S.lastWarnSec = left; sfx.warn(S.day.qty !== 0); }
   }
 
@@ -282,12 +315,15 @@ function openDay() {
     <div class="eyebrow">${ui.esc(RULES.name.split(' · ')[0])} · Day ${r.day} of ${RULES.evalDays}</div>
     <h2>${ui.esc(S.market.ticker)} <span style="font-weight:500;color:rgba(250,249,245,.6)">opens $${S.market.open.toFixed(2)}</span></h2>
     <p>News at <b>${newsTimes()}</b>. Marked on the clock.</p>
+    ${RULES.option && r.day === 1 ? `<p>Options: tap <b>CALL</b> if you think it rises, <b>PUT</b> if it falls. You can only lose what you paid. Premium melts as the day runs, gets pumped before earnings, and is crushed the moment they land.</p>` : ''}
     ${RULES.contract && r.day === 1 ? `<p>Futures: you trade whole <b>contracts</b>. Every ${RULES.contract.tickSize.toFixed(2)} tick is <b>$${RULES.contract.tickValue.toFixed(2)}</b> a contract. Max is ${RULES.maxContracts}, and it moves fast.</p>` : ''}
     ${ui.rows([
       ['Balance', ui.money(r.balance)],
       ...(RULES.contract
         ? [['Contract', `${RULES.contract.symbol} · $${RULES.contract.pointValue} a point`], ['Max position', `${RULES.maxContracts} contracts`]]
-        : [[`Buying power (${RULES.buyingPowerMultiplier}x)`, ui.money(S.day.buyingPower)]]),
+        : RULES.option
+          ? [['Strike', `${S.market.strike} calls & puts, expire 16:00`], ['Premium budget', `${ui.money(RULES.option.premiumBudget)} a position`]]
+          : [[`Buying power (${RULES.buyingPowerMultiplier}x)`, ui.money(S.day.buyingPower)]]),
       ['Daily loss limit', ui.money(-RULES.dailyLossLimit)],
       ['Drawdown floor', ui.money(r.floor)],
       ['Target balance', ui.money(RULES.startBalance + RULES.profitTarget)],
@@ -295,7 +331,7 @@ function openDay() {
       ...(r.perks.length ? [['Perks', r.perks.map((id) => PERKS.find((p) => p.id === id).name).join(', ') + (r.perks.includes('mulligan') ? ` (${r.mulligans} mulligan left)` : '')]] : []),
     ])}
     <button class="cta" data-action="go">Open the market</button>
-    <div class="fine">Be flat by the 16:00 bell or you're fired.</div>
+    <div class="fine">${RULES.option ? 'Close every contract' : 'Be flat'} by the 16:00 bell or you're fired.</div>
   `, { go: beginDay });
 }
 
@@ -356,7 +392,7 @@ function fire(rule) {
   setScene('menu');
   render();
   const t = RULE_TEXT[rule];
-  const snap = snapshot(S.run, S.day, price(), RULES);
+  const snap = snapshot(S.run, S.day, mark(), RULES);
   const rep = award(false);
   ui.showCard(`
     <div class="eyebrow">Day ${S.run.day} · ${ui.clockText(minuteNow())}</div>
@@ -417,7 +453,7 @@ function passed() {
     ])}
     <button class="cta" data-action="again">New eval</button>
     <button class="cta ghost" data-action="shop">Perk shop</button>
-    <div class="fine">Top of the ladder for now. The options desk opens in a later stage.</div>
+    <div class="fine">Top of the ladder. You've earned the window seat.</div>
   `, { again: () => startRun(), shop: () => shop(() => startRun()) });
 }
 
@@ -557,7 +593,7 @@ function title() {
     <h1>Funded<span class="dot">.</span></h1>
     <p>The firm gives you $25,000 and five days. Make <b>+$1,500</b>.
       Lose <b>$750</b> in a day, touch the drawdown floor, or hold through the bell, and you're out.
-      Pass, and you move up to the $50k futures desk.</p>
+      Pass to move up: $50k futures, then $100k options.</p>
     <p style="font-size:3.2cqw">Size buys a share of your buying power. News times are marked on the clock.</p>
     ${saved ? `<button class="cta" data-action="cont">Continue · ${ui.esc(tierOf(saved.run).short)} · Day ${saved.run.day}</button>
     <button class="cta ghost" data-action="start">New eval</button>`

@@ -49,7 +49,7 @@ export function initUI(handlers) {
     sizes: $('sizes'),
     buy: $('buyBtn'), sell: $('sellBtn'), flat: $('flatBtn'),
     cardLayer: $('cardLayer'), card: $('card'),
-    l2: $('l2'), coach: $('coach'), coachText: $('coachText'), coachNext: $('coachNext'),
+    l2: $('l2'), opt: $('opt'), coach: $('coach'), coachText: $('coachText'), coachNext: $('coachNext'),
     chartWrap: document.querySelector('.chart-wrap'), meters: document.querySelector('.meters'),
   };
   el.coachNext.addEventListener('click', () => coachNextFn?.());
@@ -92,18 +92,25 @@ export function initUI(handlers) {
 let onSize = () => {};
 
 /** Rebuild the size selector for a tier (shares of buying power, or contracts). */
-export function setSizes(sizes) {
+export function setSizes(sizes, noun = 'buying power') {
   el.sizes.textContent = '';
   sizes.forEach((s, i) => {
     const b = document.createElement('button');
     b.textContent = s.label;
     b.setAttribute('role', 'radio');
-    b.setAttribute('aria-label', s.contracts ? `${s.contracts} contract${s.contracts > 1 ? 's' : ''}` : s.label === 'MAX' ? 'Max size' : `${s.label} of buying power`);
+    b.setAttribute('aria-label', s.contracts ? `${s.contracts} contract${s.contracts > 1 ? 's' : ''}` : s.label === 'MAX' ? 'Max size' : `${s.label} of ${noun}`);
     b.dataset.i = i;
     b.addEventListener('pointerdown', (e) => { e.preventDefault(); onSize(i); });
     b.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') onSize(i); });
     el.sizes.appendChild(b);
   });
+}
+
+/** Order button labels: BUY / SELL / FLATTEN, or CALL / PUT / CLOSE for options. */
+export function setActionLabels([buy, sell, flat]) {
+  el.buy.textContent = buy;
+  el.sell.textContent = sell;
+  el.flat.textContent = flat;
 }
 
 function press(btn) {
@@ -170,16 +177,28 @@ export function renderL2(book) {
     `<span>${pct >= 50 ? '▲' : '▼'} ${pct}%</span>`;
 }
 
+/** Options strip: strike, call and put premiums, IV, earnings time (null hides it). */
+export function renderOptions(o) {
+  if (!o) { el.opt.hidden = true; return; }
+  el.opt.hidden = false;
+  el.opt.innerHTML =
+    `<span class="tag">${o.strike} STRIKE</span>` +
+    `<span class="up">▲C ${o.call.toFixed(2)}</span>` +
+    `<span class="down">▼P ${o.put.toFixed(2)}</span>` +
+    `<span class="iv">IV ${Math.round(o.iv * 100)}%</span>` +
+    (o.earnings ? `<span class="earn">${esc(o.earnings)}</span>` : '');
+}
+
 export function hideNews() { clearTimeout(newsTimer); el.news.hidden = true; }
 
-export function setBell(secondsLeft, holding) {
+export function setBell(secondsLeft, holding, word = 'FLATTEN') {
   if (secondsLeft == null) {
     el.bell.hidden = true;
     el.clock.classList.remove('pulse');
     return;
   }
   el.bell.hidden = false;
-  el.bell.textContent = `BELL 0:${String(secondsLeft).padStart(2, '0')}${holding ? ' · FLATTEN' : ''}`;
+  el.bell.textContent = `BELL 0:${String(secondsLeft).padStart(2, '0')}${holding ? ` · ${word}` : ''}`;
   el.bell.className = 'bell' + (holding ? ' hot' : '');
   el.clock.classList.add('pulse');
 }
@@ -202,7 +221,7 @@ function meter(node, used, kind) {
   }
 }
 
-export function renderDesk(snap, day, sizeIndex) {
+export function renderDesk(snap, day, sizeIndex, mark = null) {
   el.bal.textContent = money(snap.balance);
   const dp = signed(snap.dayPnl);
   el.dayPnl.textContent = dp.text;
@@ -212,10 +231,19 @@ export function renderDesk(snap, day, sizeIndex) {
   meter(el.mDd, snap.ddUsed, 'dd');
   meter(el.mTgt, snap.targetProgress, 'target');
 
-  if (day.qty === 0 && day.locked) {
+  if (performance.now() < deniedUntil) {
+    // keep a refusal message readable; the price ticks every ~0.1 s
+  } else if (day.qty === 0 && day.locked) {
     el.pos.innerHTML = `<span class="side">DESK LOCKED</span><span class="muted">mulligan used</span>`;
   } else if (day.qty === 0) {
     el.pos.innerHTML = `<span class="side muted">FLAT</span><span class="muted">no position</span>`;
+  } else if (day.right) {
+    const o = signed(snap.open);
+    const what = day.right === 'C' ? 'CALL' : 'PUT';
+    el.pos.innerHTML =
+      `<span class="side">${day.qty} ${what}${day.qty > 1 ? 'S' : ''}</span>` +
+      `<span class="muted">${day.avg.toFixed(2)} → ${mark.toFixed(2)}</span>` +
+      `<span class="${o.cls}">${o.text}</span>`;
   } else {
     const side = day.qty > 0 ? 'LONG' : 'SHORT';
     const o = signed(snap.open);
@@ -232,7 +260,10 @@ export function setTradingEnabled(on) {
   for (const b of [el.buy, el.sell, el.flat]) b.disabled = !on;
 }
 
-export function flashDenied(text) {
+let deniedUntil = 0;
+/** Show a refused order (MAX SIZE, DESK LOCKED...) in the position line for a moment. */
+export function flashDenied(text, ms = 900) {
+  deniedUntil = performance.now() + ms;
   el.pos.innerHTML = `<span class="side">${esc(text)}</span>`;
 }
 

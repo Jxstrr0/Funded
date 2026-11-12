@@ -147,7 +147,7 @@ export class Chart {
       ctx.textAlign = 'left';
       ctx.textBaseline = 'bottom';
       ctx.fillStyle = COL.ivory;
-      ctx.fillText(d.qty > 0 ? 'AVG ▲ LONG' : 'AVG ▼ SHORT', plotL + 2, yy - 1);
+      ctx.fillText(d.avgLabel ?? (d.qty > 0 ? 'AVG ▲ LONG' : 'AVG ▼ SHORT'), plotL + 2, yy - 1);
     }
 
     // Last price tag.

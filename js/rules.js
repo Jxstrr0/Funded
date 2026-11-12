@@ -35,11 +35,13 @@ export function newRun(rules = TIER1, seed = (Math.random() * 2 ** 32) >>> 0, pe
 
 export function newDay(run, rules = TIER1) {
   const futures = !!rules.contract;
+  const options = !!rules.option;
   return {
     startBalance: run.balance,
-    buyingPower: futures ? 0 : Math.round(run.balance * rules.buyingPowerMultiplier),
-    maxContracts: futures ? rules.maxContracts : null, // futures: whole-contract cap
-    mult: futures ? rules.contract.pointValue : 1,      // $ per 1.00 price move per unit
+    buyingPower: futures || options ? 0 : Math.round(run.balance * rules.buyingPowerMultiplier),
+    maxContracts: futures || options ? rules.maxContracts : null, // whole-contract cap
+    mult: futures ? rules.contract.pointValue : options ? rules.option.multiplier : 1, // $ per 1.00 move per unit
+    right: null,             // options: 'C' (calls) or 'P' (puts) while holding; qty is then a positive count
     qty: 0,                  // signed net units (shares or contracts): + long, - short
     avg: 0,
     realized: 0,
@@ -88,6 +90,21 @@ export function orderDelta(day, side, size, price) {
   return side * Math.max(0, Math.min(want, room));
 }
 
+/**
+ * Options: contracts bought by one CALL or PUT press at premium `prem`.
+ * A size buys a share of the premium budget; the whole position may cost at
+ * most the budget, and hold at most maxContracts.
+ */
+export function optionOrder(day, size, prem, rules) {
+  const o = rules.option;
+  const cost = prem * o.multiplier;
+  const spent = day.qty * day.avg * o.multiplier;
+  const want = Math.floor((size.share * o.premiumBudget) / cost);
+  const room = Math.min(Math.floor((o.premiumBudget - spent) / cost + 1e-9), rules.maxContracts - day.qty);
+  return Math.max(0, Math.min(want, room));
+}
+
+/** The price a position is marked at: the underlying, or for options the held side's premium. */
 export function openPnl(day, price) {
   return day.qty === 0 ? 0 : day.qty * (price - day.avg) * (day.mult ?? 1);
 }
