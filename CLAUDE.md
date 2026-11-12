@@ -41,6 +41,16 @@ Read this at the start of every session. The full design spec is `docs/HANDOFF.m
 - Next: **stage 6**, the options tier. Its arcade design is still open (handoff §12), so ask the owner first.
 - Update this section when a stage lands.
 
+## Security and privacy (studio baseline)
+
+- **Name:** use the name Kelbo only. Never his real name, initials or email, anywhere in the repo: files, commit messages, PR text.
+- **Commits:** author them as `Jxstrr0 <322161611+Jxstrr0@users.noreply.github.com>` or `Claude <noreply@anthropic.com>`, never a personal email address.
+- **No secrets.** The repo is public: no keys, tokens or passwords in any file or commit.
+- **Storage:** localStorage keys start `funded.` (`funded.run.v1`, `funded.meta.v1`, `funded.audio.v1`), every access in try/catch. Never `localStorage.clear()`, and never touch another game's keys.
+- **Content-Security-Policy:** `index.html` has a CSP meta tag that lets the page load only its own files. If the game ever needs something from another address, add that address to the tag in the same PR, or the browser will block it. No outside scripts, fonts or CDNs: Space Grotesk is self-hosted in `assets/fonts/` (SIL OFL 1.1, copied from the studio site with the owner's OK).
+- **Page text:** `innerHTML` only ever gets the game's own strings and numbers. Anything a player could type or paste (a future save code, a name) goes in with `textContent` or through `esc()` in `js/ui.js`.
+- The studio's security cycle (the `longlight-security-cycle` skill in `Jxstrr0/longlight-assets`) scans this repo with the others.
+
 ## Verifying changes
 
 Serve with `python3 -m http.server`, open `/?speed=10`, and check with Playwright at a 380×760 phone viewport and at a desktop size before merging.
