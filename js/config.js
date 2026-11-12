@@ -53,10 +53,53 @@ export const TIER2 = {
     { label: 'MAX', share: 1 },
   ],
   defaultSizeIndex: 0,
-  next: null,                  // top of the ladder for now (options arrive in stage 6)
+  next: 'tier3',
 };
 
-export const TIERS = { tier1: TIER1, tier2: TIER2 };
+// Firm rules for Tier 3 ($100k options eval). One stock a day and one strike,
+// at the money at the open, expiring at the 16:00 bell. You buy calls (up) or
+// puts (down) in whole contracts, one side at a time. Premium drains through
+// the day (time decay), is pumped before the day's earnings release and
+// collapses right after it (volatility crush).
+export const TIER3 = {
+  id: 'tier3',
+  name: 'Tier 3 · $100k Options Eval',
+  short: '$100k options',
+  startBalance: 100000,
+  profitTarget: 6000,
+  dailyLossLimit: 3000,
+  trailingDrawdown: 6000,
+  floorLocksAt: 100000,
+  minTradingDays: 3,
+  evalDays: 5,
+  option: {
+    multiplier: 100,           // shares per contract: $ per 1.00 of premium
+    strikeStep: 1,             // strike = the open, rounded to this
+    premiumBudget: 2000,       // most premium one position may cost (MAX size)
+    ivMin: 0.35,               // the day's base implied volatility (annual), seeded in this range
+    ivMax: 0.5,
+    ivEarningsPump: 2.6,       // IV multiplier just before the earnings release
+    ivPumpAtOpen: 1.9,         // ...and at the open (it climbs toward the release)
+    ivCrush: 0.7,              // IV multiplier after the release
+    minMinutesLeft: 0.5,       // time floor for pricing, so the last tick isn't a cliff
+  },
+  maxContracts: 40,            // net position cap
+  priceMin: 40,
+  priceMax: 160,
+  // News jumps as a share of the price (options cap your loss at the premium paid,
+  // so these aren't tied to the daily limit like the other tiers). Tuned so a blind
+  // guess before earnings loses a little on average once the IV pump is paid for.
+  shocks: { earnings: [0.02, 0.035], other: [0.008, 0.018] },
+  sizes: [
+    { label: '25%', share: 0.25 },
+    { label: '50%', share: 0.5 },
+    { label: 'MAX', share: 1 },
+  ],
+  defaultSizeIndex: 0,
+  next: null,                  // top of the ladder
+};
+
+export const TIERS = { tier1: TIER1, tier2: TIER2, tier3: TIER3 };
 
 // One trading day.
 export const SESSION = {
@@ -122,6 +165,12 @@ export const HEADLINES = {
     'Product recall announced',
     'CFO sells large stake',
   ],
+};
+
+// Earnings headlines (Tier 3: one earnings release a day).
+export const EARNINGS_HEADLINES = {
+  up: ['Earnings: crushes estimates', 'Earnings: record quarter, guides higher', 'Earnings: margins blow past forecasts'],
+  down: ['Earnings: big miss, guidance cut', 'Earnings: revenue falls short', 'Earnings: warns on next quarter'],
 };
 
 // Permanent perks, bought with Reputation. Each is a one-time buy and applies from the next eval.

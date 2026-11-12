@@ -1,5 +1,5 @@
 // Seeded price engine. Pure: inputs in, ticks and candles out. No DOM.
-import { SESSION, ENGINE, TIER1, TICKERS, HEADLINES } from './config.js';
+import { SESSION, ENGINE, TIER1, TICKERS, HEADLINES, EARNINGS_HEADLINES } from './config.js';
 
 export function mulberry32(seed) {
   let a = seed >>> 0;
@@ -80,7 +80,7 @@ export function generateDay({ seed, dayStartBalance = TIER1.startBalance, sessio
   const u0 = rng();
   let open = c
     ? roundTo(c.priceMin + u0 * (c.priceMax - c.priceMin), step)
-    : roundTo(engine.priceMin + u0 * (engine.priceMax - engine.priceMin), step);
+    : roundTo((rules.priceMin ?? engine.priceMin) + u0 * ((rules.priceMax ?? engine.priceMax) - (rules.priceMin ?? engine.priceMin)), step);
   if (c) ticker = c.symbol;
   if (script?.ticker) ticker = script.ticker;
   if (script?.open) open = script.open;
@@ -107,6 +107,22 @@ export function generateDay({ seed, dayStartBalance = TIER1.startBalance, sessio
       const jump = e.dir * cap * (e.jumpShare ?? 0.8);
       return { candle: e.candle, tick: e.candle * tpc, dir: e.dir, headline: e.headline, jump, followTicks, followTotal: jump * 0.5 };
     });
+  }
+  // Options tier: one release is the day's earnings, and jumps are a share of
+  // the price. A separate stream keeps the other tiers' days unchanged.
+  let earningsTick = null;
+  if (rules.shocks && !script?.news && news.length) {
+    const r2 = mulberry32(hashSeed(seed, 'options'));
+    const earn = Math.floor(r2() * news.length);
+    news = news.map((e, k) => {
+      const isEarn = k === earn;
+      const [lo, hi] = isEarn ? rules.shocks.earnings : rules.shocks.other;
+      const jump = e.dir * (lo + (hi - lo) * r2());
+      const followTotal = Math.abs(jump) * e.dir * (n.followMinShareOfJump + (n.followMaxShareOfJump - n.followMinShareOfJump) * r2());
+      const headline = isEarn ? pick(r2, EARNINGS_HEADLINES[e.dir > 0 ? 'up' : 'down']) : e.headline;
+      return { ...e, jump, followTotal, headline, earnings: isEarn };
+    });
+    earningsTick = news[earn].tick;
   }
   const newsAt = new Map(news.map((e) => [e.tick, e]));
 
@@ -149,7 +165,15 @@ export function generateDay({ seed, dayStartBalance = TIER1.startBalance, sessio
     ticks[i] = Math.max(1, roundTo(Math.exp(logp), step));
   }
 
-  return { seed, ticker, open, ticks, news, regimes };
+  const day = { seed, ticker, open, ticks, news, regimes };
+  if (rules.option) {
+    const o = rules.option;
+    const r3 = mulberry32(hashSeed(seed, 'iv'));
+    day.strike = Math.round(open / o.strikeStep) * o.strikeStep;
+    day.baseIV = o.ivMin + (o.ivMax - o.ivMin) * r3();
+    day.earningsTick = earningsTick;
+  }
+  return day;
 }
 
 /**

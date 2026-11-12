@@ -14,6 +14,7 @@ Play: https://funded.longlight.games (GitHub Pages, `main` branch root)
 - **Stage 3: saving.** Done. Reload resumes the day in progress, paused.
 - **Stage 4: Reputation, perks, guided first day.** Done.
 - **Stage 5: futures tier.** Done. Pass Tier 1 to move up to the $50k futures desk.
+- **Stage 6: options tier.** Done. Pass Tier 2 to move up to $100k options: CALL / PUT / CLOSE on one strike a day, with time decay and an earnings volatility crush.
 - **Sound:** ElevenLabs effects, ambience and menu music. Toggle on the title screen or with M.
 
 ## Tuning
@@ -21,6 +22,7 @@ Play: https://funded.longlight.games (GitHub Pages, `main` branch root)
 Every number lives in `js/config.js`:
 
 - `TIER1`: balance, target, daily loss limit, drawdown, min days, buying-power multiplier, size buttons.
+- `TIER2` (futures) and `TIER3` (options): the same rules, plus the contract, premium budget, implied volatility and earnings shock settings.
 - `SESSION`: day length (180 s), candles, ticks per candle, bell warning.
 - `PERKS`, `REPUTATION`, `TUTORIAL`: perk costs and effects, Rep formula, the scripted training day.
 - `ENGINE`: volatility, trend drift, regimes, intraday U-curve, news count, jump cap (`shockCapShareOfDailyLimit`).
@@ -42,6 +44,7 @@ css/style.css     frame, screen rectangles, cards
 js/config.js      all tuning numbers
 js/engine.js      seeded price engine (pure)
 js/rules.js       firm rules and account maths (pure)
+js/options.js     option pricing: Black-Scholes, IV pump and crush (pure)
 js/chart.js       canvas candlesticks
 js/ui.js          monitor overlays, meters, cards
 js/audio.js       sound: ElevenLabs files in assets/audio/, synth fallback
