@@ -46,6 +46,7 @@ Read this at the start of every session. The full design spec is `docs/HANDOFF.m
 - Time of day: each tier desk has `-am` and `-pm` renders (`--tod` in `art/build_scene.py`). The morning layer fades out by about noon and the golden closing light fades in toward the bell (`TIME_OF_DAY` in config, `setTimeOfDay` in `js/fx.js`). Tier 3's plain desk is now daytime; its old dusk look is `desk-tier3-pm.jpg`.
 - Card sounds: deal, pick, rare shimmer, reroll shuffle, mandate stamp and shop purchase (ElevenLabs, about 207 credits of a 1,000 cap the owner approved for this).
 - Careful-play check: `node tools/levers.mjs` tries one tuning change at a time (target, news count, follow-through, jump size, eval days) for a careful and an aggressive bot. Shared bot code is in `tools/sim.mjs`.
+- Visit counts: a cookieless Cloudflare Web Analytics beacon at the end of `index.html` (owner's request, 2026-11-12), shared with the studio's zone-wide analytics site.
 - Next: nothing scheduled. Open items: Daily Challenge (handoff §12) and the outstanding art list in handoff §11.
 - Update this section when a stage lands.
 
@@ -55,7 +56,7 @@ Read this at the start of every session. The full design spec is `docs/HANDOFF.m
 - **Commits:** author them as `Jxstrr0 <322161611+Jxstrr0@users.noreply.github.com>` or `Claude <noreply@anthropic.com>`, never a personal email address.
 - **No secrets.** The repo is public: no keys, tokens or passwords in any file or commit.
 - **Storage:** localStorage keys start `funded.` (`funded.run.v1`, `funded.meta.v1`, `funded.audio.v1`), every access in try/catch. Never `localStorage.clear()`, and never touch another game's keys.
-- **Content-Security-Policy:** `index.html` has a CSP meta tag that lets the page load only its own files. If the game ever needs something from another address, add that address to the tag in the same PR, or the browser will block it. No outside scripts, fonts or CDNs: Space Grotesk is self-hosted in `assets/fonts/` (SIL OFL 1.1, copied from the studio site with the owner's OK).
+- **Content-Security-Policy:** `index.html` has a CSP meta tag that lets the page load only its own files. If the game ever needs something from another address, add that address to the tag in the same PR, or the browser will block it. The one outside script is Cloudflare's cookieless visit counter (`static.cloudflareinsights.com` in `script-src`, `cloudflareinsights.com` in `connect-src`; owner's request, 2026-11-12). No other outside scripts, fonts or CDNs: Space Grotesk is self-hosted in `assets/fonts/` (SIL OFL 1.1, copied from the studio site with the owner's OK).
 - **Page text:** `innerHTML` only ever gets the game's own strings and numbers. Anything a player could type or paste (a future save code, a name) goes in with `textContent` or through `esc()` in `js/ui.js`.
 - The studio's security cycle (the `longlight-security-cycle` skill in `Jxstrr0/longlight-assets`) scans this repo with the others.
 
