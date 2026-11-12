@@ -601,7 +601,7 @@ async function boot() {
     onAudio: () => { cycleAudioMode(); if (S.phase === 'title') title(); },
   });
   chart = new Chart(document.getElementById('chart'));
-  await Promise.all([loadImage('assets/wide.png'), loadImage('assets/desk.png')]);
+  await Promise.all([loadImage('assets/wide.jpg'), loadImage('assets/desk.jpg')]);
   requestAnimationFrame(frame);
   title();
 }

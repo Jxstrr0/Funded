@@ -1,0 +1,42 @@
+# Art: backdrop scene
+
+`build_scene.py` builds the whole trading-floor scene from Blender's factory startup and renders the two backdrops. Everything is procedural (no downloaded assets).
+
+## Run
+
+```
+blender -b --factory-startup -P art/build_scene.py -- [--out DIR] [--samples N] [--preview] [--cams main,wide]
+```
+
+- `--out DIR`: output folder (default `art/out`). Writes `desk.png` (CAM_main) and `wide.png` (CAM_wide).
+- `--samples N`: Cycles samples (default 96; 16 with `--preview`). The OpenImageDenoise denoiser is always on.
+- `--preview`: half resolution (540x960) for quick checks.
+- `--cams`: render only some cameras, e.g. `--cams wide`.
+
+Needs Blender 4.2 LTS. It renders with Cycles on the CPU (EEVEE needs a GPU). A full render takes about 5 to 9 minutes per camera on 4 cores.
+
+The script prints the measured screen rectangles for both cameras and checks them against the contract below, then ray-casts each hero screen to check that nothing hides it.
+
+## Camera and screen contract (keep fixed)
+
+The game draws its UI over the two hero screens by percentage of frame, so do not change these:
+
+- Output: 1080x1920 (9:16 portrait).
+- `CAM_main`: 35mm lens, sensor 36mm, sensor fit AUTO, at (0, -1.02, 1.17), rotation (90°, 0, 0), no shift.
+- `CAM_wide`: 30mm lens, sensor 36mm, AUTO, at (0, -2.85, 1.70), rotation (1.466, 0, -0.025) rad, XYZ Euler.
+- `HERO_screen_top`: 0.54 x 0.32 m plane facing -Y, centred at (0, 0.18, 1.36).
+- `HERO_screen_bottom`: 0.54 x 0.32 m plane facing -Y, centred at (0, 0.18, 0.98).
+- Screen material: flat emission #0B1730, strength 1, Standard view transform. No content, reflection or gradient.
+
+Expected rectangles (% of frame, left / right / top / bottom, measured from the top-left):
+
+| Camera | Top screen | Bottom screen |
+| --- | --- | --- |
+| CAM_main | 11.0 / 89.0 / 21.6 / 47.6 | 11.0 / 89.0 / 52.4 / 78.4 |
+| CAM_wide | 33.0 / 59.4 / 46.2 / 54.9 | 33.2 / 59.3 / 56.4 / 65.0 |
+
+Also keep the hero monitors unobstructed in CAM_wide (the intro zooms into them). The hero chair is shown only in the wide shot; in the gameplay view the player is sitting in it.
+
+## Free to change
+
+Materials, lighting, props, background desks and the city (all in `build_scene.py`, grouped by function: `build_room`, `build_hero_desk`, `build_bg_desks`, `build_city`, `make_tower`, `make_trading_screen`). The background monitors use only the game's monitor palette (green #2FBF71, red #E5484D, lilac #B48CE8).
