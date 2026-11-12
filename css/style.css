@@ -467,6 +467,7 @@ button:focus-visible { outline: 0.5cqw solid var(--lilac); outline-offset: 0.3cq
 .cta.ghost { background: transparent; color: var(--lilac); border: 1px solid rgba(180, 140, 232, 0.5); font-size: 3.6cqw; padding: 2.6cqw; }
 
 .card .cta.ghost + .cta.ghost { margin-top: 1.6cqw; }
+.cta.ghost.small { font-size: 3cqw; padding: 1.8cqw; border-color: rgba(180, 140, 232, 0.3); color: rgba(250, 249, 245, 0.7); }
 .perk { padding: 2cqw 0; border-bottom: 1px solid rgba(250, 249, 245, 0.08); display: grid; grid-template-columns: 1fr auto; gap: 0.6cqw 2cqw; align-items: center; }
 .perk h3 { margin: 0; font-size: 4cqw; }
 .perk p { grid-column: 1; margin: 0; font-size: 3.1cqw; }
