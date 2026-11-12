@@ -52,8 +52,7 @@ export function shockCapPct(dayStartBalance, rules = TIER1, engine = ENGINE, pri
   return (engine.news.shockCapShareOfDailyLimit * rules.dailyLossLimit) / maxNotional;
 }
 
-function scheduleNews(rng, session, engine) {
-  const n = engine.news;
+function scheduleNews(rng, session, n) {
   const count = n.min + Math.floor(rng() * (n.max - n.min + 1));
   const slots = [];
   let guard = 0;
@@ -87,9 +86,10 @@ export function generateDay({ seed, dayStartBalance = TIER1.startBalance, sessio
 
   // News: times known up front, headline/direction revealed when they land.
   const cap = shockCapPct(dayStartBalance, rules, engine, open);
-  const n = engine.news;
+  // A tier can override the news settings (rules.news), e.g. options keep their own.
+  const n = rules.news ? { ...engine.news, ...rules.news } : engine.news;
   const used = new Set();
-  let news = scheduleNews(rng, session, engine).map((candle) => {
+  let news = scheduleNews(rng, session, n).map((candle) => {
     const dir = rng() < 0.5 ? 1 : -1;
     const pool = dir > 0 ? HEADLINES.up : HEADLINES.down;
     let headline = pick(rng, pool);

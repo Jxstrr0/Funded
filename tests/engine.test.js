@@ -2,7 +2,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { generateDay, candlesUpTo, hashSeed, shockCapPct } from '../js/engine.js';
-import { SESSION, TIER1 } from '../js/config.js';
+import { SESSION, TIER1, ENGINE } from '../js/config.js';
 
 test('same seed gives the same day', () => {
   const a = generateDay({ seed: 42 });
@@ -12,12 +12,12 @@ test('same seed gives the same day', () => {
   assert.deepEqual(a.news, b.news);
 });
 
-test('day shape: 1,872 ticks, 78 candles, 1-3 news events', () => {
+test('day shape: 1,872 ticks, 78 candles, news count within ENGINE.news min..max', () => {
   for (let s = 0; s < 200; s++) {
     const d = generateDay({ seed: hashSeed('t', s) });
     assert.equal(d.ticks.length, SESSION.candles * SESSION.ticksPerCandle);
     assert.equal(candlesUpTo(d, d.ticks.length - 1).length, SESSION.candles);
-    assert.ok(d.news.length >= 1 && d.news.length <= 3);
+    assert.ok(d.news.length >= ENGINE.news.min && d.news.length <= ENGINE.news.max);
     assert.ok(d.open >= 20 && d.open <= 200);
   }
 });

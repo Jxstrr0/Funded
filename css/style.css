@@ -125,6 +125,16 @@ button:focus-visible { outline: 0.5cqw solid var(--lilac); outline-offset: 0.3cq
 /* Backdrop crossfade layer (tier desks, the fired box) */
 .bg-alt { opacity: 0; transition: opacity 700ms ease; }
 .frame.desk .bg-alt.show { opacity: 1; }
+/* Rendered intro move (STUDIO.introVideo): shown over the wide shot while it plays */
+.bg-intro { opacity: 0; }
+.frame.vid .bg-intro { opacity: 1; }
+.frame.vid .bg-desk { transition: none; } /* the clip ends on the desk, so cut straight to it */
+.frame.desk.ui .bg-intro { display: none; }
+/* Edge props on the desk (EDGE_PROPS in js/config.js), placed in percent of the frame */
+.props { position: absolute; inset: 0; pointer-events: none; transition: opacity 600ms ease; }
+.frame:not(.desk) .props, .frame.vid:not(.ui) .props, .props.off { opacity: 0; }
+.prop { position: absolute; opacity: 0; transform: translateY(1.2%); transition: opacity 500ms ease, transform 500ms ease; }
+.prop.in { opacity: 1; transform: none; }
 
 /* ---------- Monitor screens ---------- */
 
@@ -536,6 +546,12 @@ button:focus-visible { outline: 0.5cqw solid var(--lilac); outline-offset: 0.3cq
 .perk .buy.toggle { background: transparent; color: rgba(250, 249, 245, 0.7); border: 1px solid rgba(250, 249, 245, 0.3); min-width: 12cqw; }
 .perk .buy.toggle.on { background: var(--lilac); color: var(--slate); border-color: var(--lilac); }
 .perk.edge.rare h3 { color: var(--lilac); }
+/* Edge card art (assets/cards/): a prop still life to the left of the text */
+.perk.edge:has(.edge-art) { grid-template-columns: auto 1fr auto; }
+.perk.edge .edge-art { grid-row: 1 / span 2; grid-column: 1; width: 17cqw; height: 17cqw; object-fit: contain; border-radius: 2cqw; background: radial-gradient(circle at 50% 60%, rgba(180, 140, 232, 0.16), rgba(10, 20, 36, 0.6) 70%); }
+.perk.edge:has(.edge-art) h3, .perk.edge:has(.edge-art) p { grid-column: 2; }
+.perk.edge:has(.edge-art) .buy { grid-column: 3; }
+.perk.edge.rare .edge-art { box-shadow: 0 0 0 1px rgba(180, 140, 232, 0.55), 0 0 2.4cqw rgba(180, 140, 232, 0.25); }
 .perk .tag { font-size: 2.4cqw; letter-spacing: 0.08em; padding: 0.3cqw 1cqw; border-radius: 1cqw; border: 1px solid var(--lilac); color: var(--lilac); vertical-align: middle; margin-left: 1cqw; }
 
 .fine { font-size: 2.8cqw; color: rgba(250, 249, 245, 0.45); margin-top: 3cqw; text-align: center; }
@@ -616,4 +632,5 @@ button:focus-visible { outline: 0.5cqw solid var(--lilac); outline-offset: 0.3cq
   .pos.fill-up, .pos.fill-down, .pos.fill-flat, .screen.flashing::after { animation: none; }
   .screen-bottom.danger { animation: none; box-shadow: inset 0 0 2.4cqw rgba(229, 72, 77, 0.5); }
   .bg-alt { transition: none; }
+  .props, .prop { transition: none; transform: none; }
 }

@@ -1,7 +1,7 @@
 // Juice: short visual and haptic feedback, and backdrop changes. DOM only,
 // no game logic. Everything here is skipped or toned down for players who
 // ask for reduced motion.
-import { TIME_OF_DAY } from './config.js';
+import { TIME_OF_DAY, EDGE_PROPS } from './config.js';
 
 const $ = (id) => document.getElementById(id);
 const MINUS = '−';
@@ -66,10 +66,11 @@ let token = 0;
  * and a cardboard box appears when you're fired). A missing file keeps the
  * current backdrop.
  */
-export function setBackdrop(src, { tod = true } = {}) {
+export function setBackdrop(src, { tod = true, props = true } = {}) {
   const desk = $('bgDesk');
   current ??= desk.getAttribute('src');
   if (todFor === null) setTodBase(current);
+  $('props').classList.toggle('off', !props); // the box and the pass desk have their own props
   if (!src || src === current) return;
   const my = ++token;
   const img = new Image();
@@ -118,4 +119,36 @@ export function setTimeOfDay(share) {
   const pm = Math.max(0, (todShare - t.pmFadeStart) / (1 - t.pmFadeStart)) * t.pmPeak;
   $('bgAm').style.opacity = am.toFixed(3);
   $('bgPm').style.opacity = pm.toFixed(3);
+}
+
+// ---------- edge props on the desk ----------
+
+/**
+ * Show a prop on the desk for each edge the career holds. `tier` picks the
+ * render set (each desk has its own light); an edge with no layout entry, or
+ * a file that fails to load, is simply left off.
+ */
+export function setDeskProps(tier, edges = []) {
+  const box = $('props');
+  const layout = EDGE_PROPS.layout[tier] || {};
+  const want = edges.filter((id) => layout[id]);
+  const key = tier + ':' + want.join(',');
+  if (box.dataset.key === key) return;
+  box.dataset.key = key;
+  const keep = new Map([...box.children].map((n) => [n.dataset.key, n]));
+  for (const id of want) {
+    const k = tier + ':' + id;
+    if (keep.has(k)) { keep.delete(k); continue; }
+    const r = layout[id];
+    const img = document.createElement('img');
+    img.className = 'prop';
+    img.alt = '';
+    img.dataset.key = k;
+    img.style.cssText = `left:${r.l}%;top:${r.t}%;width:${r.w}%;height:${r.h}%`;
+    img.onload = () => requestAnimationFrame(() => img.classList.add('in'));
+    img.onerror = () => img.remove();
+    img.src = `${EDGE_PROPS.dir}/${tier}/${id}.webp`;
+    box.appendChild(img);
+  }
+  for (const n of keep.values()) n.remove();
 }

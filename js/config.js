@@ -21,6 +21,8 @@ export const TIER1 = {
   defaultSizeIndex: 0,
   next: 'tier2',               // passing this eval promotes you to this tier
   backdrop: 'assets/desk.jpg', // the desk: back row
+  rainBackdrop: 'assets/desk-rain.jpg',     // rain days (WEATHER)
+  fundedBackdrop: 'assets/desk-funded.jpg', // shown when this eval is passed
 };
 
 // Firm rules for Tier 2 ($50k futures eval). Same shape as Tier 1, scaled to
@@ -56,6 +58,8 @@ export const TIER2 = {
   defaultSizeIndex: 0,
   next: 'tier3',
   backdrop: 'assets/desk-tier2.jpg', // mid-floor, more monitors
+  rainBackdrop: 'assets/desk-tier2-rain.jpg',     // rain days (WEATHER)
+  fundedBackdrop: 'assets/desk-tier2-funded.jpg', // shown when this eval is passed
 };
 
 // Firm rules for Tier 3 ($100k options eval). One stock a day and one strike,
@@ -92,6 +96,8 @@ export const TIER3 = {
   // so these aren't tied to the daily limit like the other tiers). Tuned so a blind
   // guess before earnings loses a little on average once the IV pump is paid for.
   shocks: { earnings: [0.02, 0.035], other: [0.008, 0.018] },
+  // Options keep the original news settings (the stronger news in ENGINE.news is for tiers 1 and 2).
+  news: { min: 1, max: 3, minGapCandles: 9, followMinShareOfJump: 0.35, followMaxShareOfJump: 0.9 },
   sizes: [
     { label: '25%', share: 0.25 },
     { label: '50%', share: 0.5 },
@@ -100,6 +106,8 @@ export const TIER3 = {
   defaultSizeIndex: 0,
   next: null,                  // top of the ladder
   backdrop: 'assets/desk-tier3.jpg', // the window seat
+  rainBackdrop: 'assets/desk-tier3-rain.jpg',     // rain days (WEATHER)
+  fundedBackdrop: 'assets/desk-tier3-funded.jpg', // shown when this eval is passed
 };
 
 export const TIERS = { tier1: TIER1, tier2: TIER2, tier3: TIER3 };
@@ -109,6 +117,24 @@ export const STUDIO = {
   hubUrl: 'https://longlight.games', // "More games" link on the title screen
   hubLabel: 'More games at longlight.games',
   firedBackdrop: 'assets/desk-fired.jpg', // the cardboard box
+  // Rendered camera move from the wide shot onto the desk (art/build_scene.py --dolly).
+  // If it can't play (or reduced motion is on), the CSS zoom in css/style.css is used.
+  introVideo: 'assets/intro.mp4',
+};
+
+// Weather: some days are seeded grey and rainy (the tier's rainBackdrop, and no
+// morning/evening light). It doesn't change the trading.
+export const WEATHER = {
+  rainChance: 0.2, // share of trading days that are rain days
+};
+
+// Edges on the desk: each edge the career holds puts its prop on the desk
+// (images in assets/props/<tier>/<edge id>.webp, card art in assets/cards/).
+// Positions are percent of the 9:16 frame: left, top, width, height.
+export const EDGE_PROPS = {
+  dir: 'assets/props',
+  cards: 'assets/cards',
+  layout: {},
 };
 
 // Time of day: each desk backdrop (say desk.jpg) can have a morning version
@@ -148,18 +174,21 @@ export const ENGINE = {
   },
   uCurveMid: 0.7,            // volatility multiplier at midday
   uCurveEdge: 1.6,           // volatility multiplier at open and close
+  // Bump when day generation changes: a saved day in progress from an older version restarts
+  // from its open (the same seed would now give a different tape).
+  version: 2,
   news: {
-    min: 1,
-    max: 3,
+    min: 2,                  // headlines a day (was 1–3; raised so careful play can reach the target)
+    max: 4,
     firstCandle: 6,          // earliest slot (10:00)
     lastCandle: 68,          // latest slot (15:10)
-    minGapCandles: 9,
+    minGapCandles: 8,
     shockCapShareOfDailyLimit: 0.6, // a Max position loses at most this share of the daily limit on the jump
     jumpMinShareOfCap: 0.55,
     followCandlesMin: 2,
     followCandlesMax: 4,
-    followMinShareOfJump: 0.35,
-    followMaxShareOfJump: 0.9,
+    followMinShareOfJump: 0.6,  // the drift after a headline, as a share of the jump (was 0.35–0.9)
+    followMaxShareOfJump: 1.2,
     volBoost: 1.8,           // volatility right after the shock, decaying
   },
 };
@@ -213,7 +242,7 @@ export const EDGES = [
   { id: 'rewind', name: 'Rewind', weight: 1, desc: 'Once per career, a rule break rewinds the tape 10 seconds and pauses instead.', seconds: 10, uses: 1 },
   { id: 'hotHand', name: 'Hot Hand', weight: 3, desc: 'After a green day, the next day your sizes and your daily loss limit are both 20% bigger.', sizeBoost: 0.20, lossBoost: 0.20 },
   { id: 'stopDiscipline', name: 'Stop Discipline', weight: 3, desc: "Auto-flatten when a position's open loss reaches 60% of the daily limit.", atShareOfLimit: 0.6 },
-  { id: 'tapeReader', name: 'Tape Reader', weight: 1, desc: 'News markers show ▲ or ▼ 1.5 seconds before the headline hits.', leadSeconds: 1.5 },
+  { id: 'tapeReader', name: 'Tape Reader', weight: 1, desc: 'News markers show ▲ or ▼ 1 second before the headline hits.', leadSeconds: 1.0 },
   { id: 'riskFriend', name: 'Risk Desk Friend', weight: 3, desc: 'Daily loss limit +10% for the rest of the career.', lossBuffer: 0.10 },
   { id: 'shortWeek', name: 'Short Week', weight: 2, desc: 'Profit target -12%.', targetCut: 0.12 },
   { id: 'coffee', name: 'Coffee', weight: 3, desc: 'The clock runs 15% slower.', slowdown: 0.15 },
