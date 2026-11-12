@@ -14,6 +14,12 @@ Read this at the start of every session. The full design spec is `docs/HANDOFF.m
   - Nothing else: no unlicensed or "free for personal use" assets.
 - The owner works mostly **from a phone** through the GitHub web UI. Keep files simple and easy to edit there, and keep tuning numbers in `js/config.js` and screen positions in the CSS variables at the top of `css/style.css`.
 
+## Art
+
+- `assets/desk.png` and `assets/wide.png` are **Blender blockouts to build on**, not final art. They come from the hosted Blender project (Higgsfield 3D Jutsu, link in `docs/HANDOFF.md` §11): cameras `CAM_main` and `CAM_wide`, screens `HERO_screen_top` and `HERO_screen_bottom`.
+- Improve the scene in that project and re-render at the same 720×1280 framing, so the percentage-based overlays keep lining up. If a camera moves, re-measure the screen rectangles and the intro zoom.
+- Outstanding art: listed in `docs/HANDOFF.md` §11.
+
 ## Locked technical rules (from the handoff)
 
 - Plain HTML, CSS and vanilla JS ES modules. **No build step, no framework, no npm.**
