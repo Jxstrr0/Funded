@@ -112,3 +112,21 @@ export const TUTORIAL = {
   },
   startCandle: 6,          // chart is pre-filled to 10:00 when the lesson starts
 };
+
+// Audio. Volumes are 0..1. Files live in assets/audio/ (generated with ElevenLabs).
+// If a file fails to load, the built-in synth version plays instead.
+export const AUDIO = {
+  master: 0.9,
+  sfx: 0.8,
+  ambience: 0.35,   // trading-floor murmur during a live day
+  music: 0.45,      // menu music on the title and between days
+  fadeSeconds: 0.8,
+  files: {
+    buy: 'buy.mp3', sell: 'sell.mp3', flat: 'flatten.mp3', denied: 'denied.mp3',
+    news: 'news.mp3', tick: 'tick.mp3', bell: 'bell.mp3', fired: 'fired.mp3',
+    pass: 'pass.mp3', mulligan: 'mulligan.mp3', rep: 'rep.mp3',
+    ambience: 'ambience.mp3', music: 'music.mp3',
+  },
+  // Per-sound trim, applied on top of the sfx volume.
+  gain: { buy: 0.7, sell: 0.7, flat: 0.8, denied: 0.6, news: 0.8, tick: 0.5, bell: 0.9, fired: 0.9, pass: 0.9, mulligan: 0.8, rep: 0.8 },
+};

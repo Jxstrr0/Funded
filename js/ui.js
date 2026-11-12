@@ -93,6 +93,7 @@ export function initUI(handlers) {
     else if (k === 'f') { press(el.flat); handlers.onFlat(); }
     else if (k >= '1' && k <= '3') handlers.onSize(Number(k) - 1);
     else if (k === 'p' || k === ' ') { e.preventDefault(); handlers.onTogglePause(); }
+    else if (k === 'm') handlers.onAudio?.();
   });
 }
 

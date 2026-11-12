@@ -42,7 +42,7 @@ js/engine.js      seeded price engine (pure)
 js/rules.js       firm rules and account maths (pure)
 js/chart.js       canvas candlesticks
 js/ui.js          monitor overlays, meters, cards
-js/audio.js       placeholder synth sounds
+js/audio.js       sound: ElevenLabs files in assets/audio/, synth fallback
 js/save.js        localStorage save and resume
 js/meta.js        Reputation, perk shop, tutorial flag
 js/tutorial.js    guided training day

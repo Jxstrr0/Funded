@@ -6,7 +6,7 @@ import { loadMeta, saveMeta, reputationFor, buyPerk, canBuy } from './meta.js';
 import { createTutorial } from './tutorial.js';
 import { Chart } from './chart.js';
 import * as ui from './ui.js';
-import { unlockAudio, sfx } from './audio.js';
+import { unlockAudio, sfx, setScene, audioMode, cycleAudioMode } from './audio.js';
 import { loadRun, saveRun, clearRun } from './save.js';
 
 let RULES = TIER1; // tier rules with the run's perks applied
@@ -94,6 +94,7 @@ function resumeSaved(data) {
   S.phase = 'paused';
   ui.setPaused(true);
   ui.setTradingEnabled(false);
+  setScene('quiet');
   render();
 }
 
@@ -161,7 +162,7 @@ function useMulligan(rule) {
   S.day.locked = true;
   ui.setTradingEnabled(false);
   ui.shake();
-  sfx.fired();
+  sfx.mulligan();
   ui.showNotice(`MULLIGAN USED · ${RULE_TEXT[rule].name}. Desk locked for today.`);
   S.dirty = true;
   persist(true);
@@ -223,6 +224,7 @@ function pause() {
   S.phase = 'paused';
   ui.setPaused(true);
   ui.setTradingEnabled(false);
+  setScene('quiet');
   persist(true);
 }
 
@@ -233,6 +235,7 @@ function resume() {
   S.prevNow = null;
   ui.setPaused(false);
   ui.setTradingEnabled(!S.day.locked);
+  setScene('day');
 }
 
 document.addEventListener('visibilitychange', () => { if (document.hidden) pause(); });
@@ -256,6 +259,7 @@ function openDay() {
   S.wired = new Set();
   S.lastWarnSec = null;
   S.phase = 'dayopen';
+  setScene('menu');
   ui.hideNews();
   ui.setBell(null);
   ui.setPaused(false);
@@ -291,6 +295,7 @@ function beginDay() {
   S.phase = 'running';
   S.prevNow = null;
   ui.setTradingEnabled(true);
+  setScene('day');
   render();
   persist(true);
 }
@@ -300,6 +305,7 @@ function closingBell() {
   ui.setBell(null);
   ui.setTradingEnabled(false);
   sfx.bell();
+  setScene('menu');
   if (S.tutorial) return finishTutorial(S.day.qty !== 0);
   if (S.day.qty !== 0 && !breach('flatAtBell')) return;
 
@@ -335,6 +341,7 @@ function fire(rule) {
   ui.setTradingEnabled(false);
   ui.shake();
   sfx.fired();
+  setScene('menu');
   render();
   const t = RULE_TEXT[rule];
   const snap = snapshot(S.run, S.day, price(), RULES);
@@ -401,6 +408,7 @@ function award(passedEval) {
   const rep = reputationFor(S.run.history, passedEval);
   meta = { ...meta, rep: meta.rep + rep.total, runs: meta.runs + 1, passes: meta.passes + (passedEval ? 1 : 0) };
   saveMeta(meta);
+  if (rep.total > 0) setTimeout(sfx.rep, 1200);
   return rep;
 }
 
@@ -458,6 +466,7 @@ function startTutorial() {
   S.phase = 'running';
   S.prevNow = null;
   ui.setTradingEnabled(true);
+  setScene('day');
   render();
   S.tutorial.start();
 }
@@ -492,8 +501,11 @@ function loadImage(src) {
   });
 }
 
+const AUDIO_LABEL = { all: 'Sound: music + effects', sfx: 'Sound: effects only', off: 'Sound: off' };
+
 function title() {
   S.phase = 'title';
+  setScene('menu');
   endTutorial();
   const saved = loadRun();
   const fresh = !meta.tutorialDone;
@@ -508,8 +520,10 @@ function title() {
     : `<button class="cta" data-action="start">${fresh ? 'Start training day' : 'Start eval'}</button>`}
     ${fresh ? '' : `<button class="cta ghost" data-action="shop">Perk shop · <span class="rep">${meta.rep} Rep</span></button>
     <button class="cta ghost" data-action="tut">Replay tutorial</button>`}
-    <div class="fine">Desktop: B buy · S sell · F flatten · 1–3 size · P pause</div>
+    <button class="cta ghost small" data-action="audio">${AUDIO_LABEL[audioMode()]}</button>
+    <div class="fine">Desktop: B buy · S sell · F flatten · 1–3 size · P pause · M sound</div>
   `, {
+    audio: () => { cycleAudioMode(); title(); },
     start: () => intro(fresh ? startTutorial : startRun),
     cont: () => intro(() => resumeSaved(saved)),
     shop: () => shop(title),
@@ -540,6 +554,7 @@ async function boot() {
     onPause: pause,
     onResume: resume,
     onTogglePause: () => (S.phase === 'running' ? pause() : resume()),
+    onAudio: () => { cycleAudioMode(); if (S.phase === 'title') title(); },
   });
   chart = new Chart(document.getElementById('chart'));
   await Promise.all([loadImage('assets/wide.png'), loadImage('assets/desk.png')]);
