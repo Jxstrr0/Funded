@@ -684,6 +684,7 @@ button:focus-visible { outline: 0.5cqw solid var(--lilac); outline-offset: 0.3cq
 /* Link back to the studio hub */
 .hub { display: block; margin-top: 3cqw; text-align: center; font-size: 2.9cqw; color: var(--lilac); text-decoration: none; }
 .hub:hover, .hub:focus-visible { text-decoration: underline; }
+.ver { margin-top: 1.5cqw; text-align: center; font-size: 2.4cqw; opacity: .55; }
 
 @media (prefers-reduced-motion: reduce) {
   .frame.intro .bg-wide { transition-duration: 1ms; }

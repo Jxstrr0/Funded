@@ -1,5 +1,5 @@
 // Boot, intro, and the game state machine.
-import { TIER1, TIERS, SESSION, PERKS, TUTORIAL, STUDIO, EDGES, MANDATES, REGIME_TEXT, ENGINE, WEATHER, EDGE_PROPS } from './config.js';
+import { TIER1, TIERS, SESSION, PERKS, TUTORIAL, STUDIO, VERSION, EDGES, MANDATES, REGIME_TEXT, ENGINE, WEATHER, EDGE_PROPS } from './config.js';
 import * as fx from './fx.js';
 import { generateDay, candlesUpTo, hashSeed, bookAt } from './engine.js';
 import { newRun, newDay, applyFill, orderDelta, optionOrder, snapshot, closeDay, RULE_TEXT, effectiveRules, applyMulligan, openPnl } from './rules.js';
@@ -827,6 +827,7 @@ function title() {
     <button class="cta ghost small" data-action="audio">${AUDIO_LABEL[audioMode()]}</button>
     <div class="fine">Desktop: B buy · S sell · F flatten · 1–3 size · P pause · M sound</div>
     <a class="hub" href="${ui.esc(STUDIO.hubUrl)}">${ui.esc(STUDIO.hubLabel)}</a>
+    <div class="ver">v${ui.esc(VERSION)}</div>
   `, {
     audio: () => { cycleAudioMode(); title(); },
     start: () => (fresh ? intro(startTutorial) : newCareer()),

@@ -112,6 +112,13 @@ export const TIER3 = {
 
 export const TIERS = { tier1: TIER1, tier2: TIER2, tier3: TIER3 };
 
+// The game's version, four numbers: Major.Minor.Patch.Build (the same scheme as
+// every Longlight game). Bump it in the PR that ships a change players see.
+// It shows small on the title screen, and when it changes on main,
+// .github/workflows/publish-release.yml publishes a GitHub Release, which is
+// where longlight.games reads this game's version and "what's new" line.
+export const VERSION = '0.9.0.0';
+
 // Studio links and shared art.
 export const STUDIO = {
   hubUrl: 'https://longlight.games', // "More games" link on the title screen
