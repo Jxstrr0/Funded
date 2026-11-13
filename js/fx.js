@@ -74,8 +74,8 @@ export function setBackdrop(src, { tod = true, props = true, rain = null } = {})
   $('props').classList.toggle('off', !props); // the box and the pass desk have their own props
   $('deskMouse').classList.toggle('off', !(props && tod)); // its crops match the plain desk's light only
   setRainStreaks(rain);
+  const my = ++token; // cancels a crossfade still loading, even when the desk we want is already up
   if (!src || src === current) return;
-  const my = ++token;
   const img = new Image();
   img.onload = () => {
     if (my !== token) return;
@@ -112,6 +112,7 @@ function setRainStreaks(tier) {
 
 let todFor = null;
 let todShare = 0;
+let todDrawn = ''; // the opacities last written, so an unchanged frame touches no DOM
 
 /** Load the -am / -pm versions of a desk backdrop (null: none). */
 function setTodBase(src) {
@@ -134,11 +135,14 @@ export function setTimeOfDay(share) {
   const t = TIME_OF_DAY;
   const am = Math.max(0, 1 - todShare / t.amFadeEnd);
   const pm = Math.max(0, (todShare - t.pmFadeStart) / (1 - t.pmFadeStart)) * t.pmPeak;
-  $('bgAm').style.opacity = am.toFixed(3);
-  $('bgPm').style.opacity = pm.toFixed(3);
-  for (const n of $('deskMouse').querySelectorAll('[data-tod]')) {
-    n.style.opacity = (n.dataset.tod === 'am' ? am : pm).toFixed(3);
-  }
+  const a = am.toFixed(3), p = pm.toFixed(3);
+  const mouse = $('deskMouse');
+  const key = `${a}|${p}|${mouse.dataset.key ?? ''}|${mouse.childElementCount}`; // new mouse layers need a write too
+  if (key === todDrawn) return;
+  todDrawn = key;
+  $('bgAm').style.opacity = a;
+  $('bgPm').style.opacity = p;
+  for (const n of mouse.querySelectorAll('[data-tod]')) n.style.opacity = n.dataset.tod === 'am' ? a : p;
 }
 
 // ---------- edge props on the desk ----------
