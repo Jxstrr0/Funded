@@ -10,6 +10,22 @@
   <meta name="theme-color" content="#141413">
   <title>Funded</title>
   <meta name="description" content="Funded: a roguelike prop-firm trading game by Longlight Interactive.">
+  <link rel="icon" href="favicon.ico" sizes="48x48">
+  <link rel="icon" type="image/png" sizes="32x32" href="assets/icons/favicon-32.png">
+  <link rel="apple-touch-icon" href="assets/icons/apple-touch-icon.png">
+  <link rel="manifest" href="manifest.webmanifest">
+  <meta name="apple-mobile-web-app-title" content="Funded">
+  <!-- Link previews (chat apps, social). Absolute URLs: crawlers need them. -->
+  <meta property="og:type" content="website">
+  <meta property="og:site_name" content="Longlight Interactive">
+  <meta property="og:title" content="Funded">
+  <meta property="og:description" content="A roguelike prop-firm trading game. Pass the eval. Don't get fired.">
+  <meta property="og:url" content="https://funded.longlight.games/">
+  <meta property="og:image" content="https://funded.longlight.games/assets/og.jpg">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+  <meta property="og:image:alt" content="Funded: a trading desk with two monitors in an office above the city.">
+  <meta name="twitter:card" content="summary_large_image">
   <link rel="preload" as="font" type="font/woff2" href="assets/fonts/space-grotesk-latin.woff2" crossorigin>
   <link rel="stylesheet" href="css/style.css">
   <link rel="preload" as="image" href="assets/wide.jpg">
@@ -45,7 +61,7 @@
         <div class="l2" id="l2" hidden></div>
         <div class="opt" id="opt" hidden></div>
       </div>
-      <div class="paused" id="paused" hidden>
+      <div class="paused" id="paused" role="button" tabindex="0" aria-label="Paused. Resume" hidden>
         <div class="paused-title">Paused</div>
         <div class="paused-sub">Tap to resume</div>
       </div>
@@ -74,6 +90,10 @@
     <!-- Touch screens: the pointer that clicks what you tap (js/clicker.js) -->
     <div class="pointer" id="pointer" aria-hidden="true"></div>
 
+    <!-- Screen readers: fills, news, warnings (ui.announce) -->
+    <div class="sr" id="sr" role="status" aria-live="polite"></div>
+    <div class="sr" id="srAlert" role="alert" aria-live="assertive"></div>
+
     <!-- Tutorial coach bubble -->
     <div class="coach" id="coach" hidden>
       <div class="coach-text" id="coachText"></div>
@@ -81,7 +101,7 @@
     </div>
 
     <!-- Full-frame cards: title, day open, summary, fired, pass -->
-    <div class="card-layer" id="cardLayer" hidden>
+    <div class="card-layer" id="cardLayer" role="dialog" aria-modal="true" aria-label="Funded" hidden>
       <div class="card" id="card"></div>
     </div>
   </main>

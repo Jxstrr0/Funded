@@ -34,9 +34,15 @@ export function pnlPop(value) {
   const a = Math.abs(r).toLocaleString('en-US');
   n.textContent = r > 0 ? `▲ +$${a}` : `▼ ${MINUS}$${a}`;
   n.style.top = `${pos.offsetTop}px`;
+  // Quick closes stack: older pops still in the air move up a line, at most 3 shown.
+  pops = pops.filter((p) => p.isConnected);
+  if (pops.length >= 3) pops.shift().remove();
+  pops.forEach((p, i) => p.style.setProperty('--lift', String(pops.length - i)));
+  pops.push(n);
   $('screenBottom').appendChild(n);
   setTimeout(() => n.remove(), 1300);
 }
+let pops = [];
 
 /** Flash both monitors: 'bell' (ivory), 'fired' (red) or 'pass' (green). */
 export function screenFlash(kind) {
@@ -72,7 +78,7 @@ export function setBackdrop(src, { tod = true, props = true, rain = null } = {})
   current ??= desk.getAttribute('src');
   if (todFor === null) setTodBase(current);
   $('props').classList.toggle('off', !props); // the box and the pass desk have their own props
-  $('deskMouse').classList.toggle('off', !(props && tod)); // its crops match the plain desk's light only
+  $('deskMouse').classList.toggle('off', !(props && (tod || rain))); // crops exist for the plain and rain desks only
   setRainStreaks(rain);
   const my = ++token; // cancels a crossfade still loading, even when the desk we want is already up
   if (!src || src === current) return;

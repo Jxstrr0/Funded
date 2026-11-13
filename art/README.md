@@ -140,7 +140,7 @@ python3 art/build_props.py --mouse [--tiers tier1,tier2,tier3] [--tods mid,am,pm
 - The mouse hangs off the right and bottom edges of the frame. The crop is rendered with a 160 px overscan: a copy of CAM_main with a larger sensor and resolution at the same pixel scale. So the layer has no cut edge when it slides left or up, and the box runs past 100%.
 - The box leaves room for `MOUSE_TRAVEL` (±1.4% of frame width, ±0.8% of height) plus a 12 px spare margin on every edge that can come into frame. It is the same for every tod. The script prints it as `MOUSE LAYOUT` for `CLICKER.mouse.layout` and saves it in `art/out/mouse/layout-<tier>.json`. All three tiers come out the same: `{ l: 86.2, t: 86.72, w: 28.61, h: 17.55 }`.
 - It then composites plate + mouse over each desk JPG with Pillow and prints the error at rest. The mean inside the box is about 1.9/255, and p99 is 8–10. It also writes `art/out/mouse/check-mouse.png`. The columns are: desk, at rest, the four corners of the travel, and |rest − desk| ×8.
-- `--tods mid,am,pm,rain` also writes `-rain` layers for the `--weather rain` desks, but the game doesn't load them yet.
+- `--tods mid,am,pm,rain` also writes `-rain` layers for the `--weather rain` desks. The game uses them on rain days (`setDeskMouse(tier, true)` in `js/clicker.js`); they have no time of day.
 - Time: about 30–70 s per tier and tod at 192 samples (8 min for all nine).
 
 ### Render times (4 CPU cores)
