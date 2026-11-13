@@ -45,8 +45,24 @@ export function unlockAudio() {
   else syncLoops();
 }
 
-// The first tap anywhere unlocks audio, so title music can start.
-for (const ev of ['pointerdown', 'keydown']) window.addEventListener(ev, unlockAudio, { once: true, capture: true });
+// A tap or key unlocks audio, so title music can start. Phones only count the
+// end of a touch (or the click) as a gesture, so listen for those too, and keep
+// listening: iOS can suspend the context again (another app, a call), and the
+// next tap brings it back.
+function wake() {
+  if (!document.hidden && (!ctx || ctx.state !== 'running')) unlockAudio();
+}
+for (const ev of ['pointerdown', 'pointerup', 'touchend', 'click', 'keydown']) {
+  window.addEventListener(ev, wake, { capture: true, passive: true });
+}
+
+// Silence everything while the page is hidden (a background tab, the app
+// switcher); pick up again when it comes back.
+document.addEventListener('visibilitychange', () => {
+  if (!ctx) return;
+  if (document.hidden) ctx.suspend().catch(() => {});
+  else ctx.resume().then(syncLoops, () => {});
+});
 
 async function load() {
   if (loading) return;

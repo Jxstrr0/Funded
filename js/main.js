@@ -37,6 +37,7 @@ const S = {
   wired: new Set(),   // Newswire: headlines already announced early
   tgtMet: false,      // target meter already full (for the one-time pop)
   tape: [],           // Rewind edge: recent day snapshots [{elapsed, day, revealed}]
+  hinted: 0,          // Tape Reader: news markers already showing their direction
 };
 
 let meta = loadMeta();
@@ -90,6 +91,7 @@ const clockScale = () => RULES.clockScale || 1; // Coffee edge: the session runs
 const bellLeft = () => Math.ceil((DAY_MS - S.elapsed) * clockScale() / 1000); // the bell countdown, in seconds
 /** Tape Reader: a news marker shows its direction this close to the headline. */
 const tapeLead = () => (hasEdge('tapeReader') ? edgeById('tapeReader').leadSeconds * 1000 / clockScale() : 0);
+const hintedCount = () => S.market.news.filter((n) => n.tick * TICK_MS - S.elapsed <= tapeLead()).length;
 
 // Options tier: premiums at a tick, and the price a position is marked at
 // (the underlying, or the held side's premium).
@@ -139,7 +141,7 @@ let lastSave = 0;
 function persist(force = false) {
   if (!S.run || S.tutorial) return;
   const now = performance.now();
-  if (!force && now - lastSave < 250) return;
+  if (!force && now - lastSave < SESSION.saveEveryMs) return;
   lastSave = now;
   const inDay = S.phase === 'running' || S.phase === 'paused';
   saveRun(S.run, inDay ? { day: S.day, elapsed: S.elapsed, revealed: [...S.revealed], mv: ENGINE.version } : null, S.sizeIndex);
@@ -157,6 +159,7 @@ function resumeSaved(data) {
   S.revealed = new Set(data.live.revealed);
   S.wired = new Set(data.live.revealed);
   S.tape = [];
+  recordTape(); // so a breach on the first tick after the reload can still Rewind
   S.lastWarnSec = null;
   ui.hideCard();
   ui.hideNews();
@@ -334,7 +337,10 @@ function frame(now) {
     S.dirty = true;
   }
   recordTape();
-  if (tapeLead()) S.dirty = true; // Tape Reader markers appear between ticks
+  if (tapeLead()) { // Tape Reader markers appear between ticks: redraw when one does
+    const hinted = hintedCount();
+    if (hinted !== S.hinted) { S.hinted = hinted; S.dirty = true; }
+  }
 
   // Newswire: headline and direction a few seconds early.
   if (has('newswire')) {
@@ -743,7 +749,6 @@ function shop(back) {
 // ---------- tutorial ----------
 
 function startTutorial() {
-  useRules(TIER1);
   S.run = newRun(TIER1, TUTORIAL.seed, []);
   S.day = newDay(S.run, TIER1);
   S.market = generateDay({ seed: TUTORIAL.seed, script: TUTORIAL.script });
@@ -760,6 +765,7 @@ function startTutorial() {
     coach: (target, html, onNext) => ui.showCoach(target, html, onNext),
     hideCoach: () => ui.hideCoach(),
   });
+  useRules(TIER1); // after S.run and S.tutorial, so the last career's props and rain don't carry over
   ui.hideCard();
   ui.hideNews();
   ui.setBell(null);
@@ -785,13 +791,17 @@ function finishTutorial(heldAtBell) {
   endTutorial();
   meta = { ...meta, tutorialDone: true };
   saveMeta(meta);
+  const saved = loadRun(); // a replay with a career saved: go back to it, never wipe it
   ui.showCard(`
     <div class="eyebrow">Training done</div>
     <h2>${heldAtBell ? 'That would be a firing.' : 'Flat at the bell. Good.'}</h2>
     <p>${heldAtBell ? 'You held through the bell. In a real eval that ends your run on the spot.' : 'That\'s the job: trade the day, respect the rules, be flat by 16:00.'}</p>
-    <p>Now the real thing: five days, +$1,500 target, no second chances.</p>
-    <button class="cta" data-action="go">Start your eval</button>
-  `, { go: () => startRun() });
+    ${saved
+    ? `<p>Your career is saved where you left it.</p>
+    <button class="cta" data-action="back">Back to the title</button>`
+    : `<p>Now the real thing: five days, +$1,500 target, no second chances.</p>
+    <button class="cta" data-action="go">Start your eval</button>`}
+  `, { go: () => startRun(), back: title });
 }
 
 // ---------- boot ----------

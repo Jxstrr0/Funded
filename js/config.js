@@ -117,7 +117,7 @@ export const TIERS = { tier1: TIER1, tier2: TIER2, tier3: TIER3 };
 // It shows small on the title screen, and when it changes on main,
 // .github/workflows/publish-release.yml publishes a GitHub Release, which is
 // where longlight.games reads this game's version and "what's new" line.
-export const VERSION = '0.9.0.0';
+export const VERSION = '0.9.0.1';
 
 // Studio links and shared art.
 export const STUDIO = {
@@ -242,6 +242,7 @@ export const SESSION = {
   ticksPerCandle: 24,     // 1,872 ticks per day, ~96ms each
   bellWarningSeconds: 20, // countdown before the closing bell
   maxFrameMs: 250,        // clamp for a single frame delta (stalls never skip time)
+  saveEveryMs: 2000,      // mid-day autosave interval (fills, pause and leaving the page save at once)
 };
 
 // Price engine.

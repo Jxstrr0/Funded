@@ -57,7 +57,7 @@ Read this at the start of every session. The full design spec is `docs/HANDOFF.m
   - **Clicker** (`js/clicker.js`, `CLICKER` in config): on touch, a pointer glides to the button you tap and clicks it. On every input the desk mouse slides a little the same way. It is a plate and mouse crop (`assets/mouse/`) and is hidden on the funded, fired and rain desks.
   - This pass spent about 413 ElevenLabs credits.
 - Visit counts: a cookieless Cloudflare Web Analytics beacon at the end of `index.html` (owner's request, 2026-11-12), shared with the studio's zone-wide analytics site.
-- Version: `VERSION` in `js/config.js` (four numbers, Major.Minor.Patch.Build, now 0.9.0.0), shown small on the title screen. Bump it in any PR that changes what players see. When it changes on `main`, `.github/workflows/publish-release.yml` publishes a GitHub Release titled from the PR, which longlight.games reads for the version and "what's new" line.
+- Version: `VERSION` in `js/config.js` (four numbers, Major.Minor.Patch.Build, now 0.9.0.1), shown small on the title screen. Bump it in any PR that changes what players see. When it changes on `main`, `.github/workflows/publish-release.yml` publishes a GitHub Release titled from the PR, which longlight.games reads for the version and "what's new" line.
 - Next: nothing scheduled. Open item: Daily Challenge (handoff §12).
 - Update this section when a stage lands.
 
