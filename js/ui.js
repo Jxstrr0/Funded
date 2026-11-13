@@ -51,6 +51,7 @@ export function initUI(handlers) {
     cardLayer: $('cardLayer'), card: $('card'),
     l2: $('l2'), opt: $('opt'), coach: $('coach'), coachText: $('coachText'), coachNext: $('coachNext'),
     chartWrap: document.querySelector('.chart-wrap'), meters: document.querySelector('.meters'),
+    sr: $('sr'), srAlert: $('srAlert'),
   };
   el.coachNext.addEventListener('click', () => coachNextFn?.());
 
@@ -75,11 +76,19 @@ export function initUI(handlers) {
 
   el.pauseBtn.addEventListener('pointerdown', (e) => { e.preventDefault(); handlers.onPause(); });
   el.paused.addEventListener('pointerdown', (e) => { e.preventDefault(); handlers.onResume(); });
+  const onEnter = (node, fn) => node.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); e.stopPropagation(); fn(); }
+  });
+  onEnter(el.pauseBtn, handlers.onPause);
+  onEnter(el.paused, handlers.onResume);
 
-  // Desktop keys: B / S / F, 1-3 for size, P or Space to pause.
+  // Desktop keys: B / S / F, 1-3 for size, P or Space to pause, M for sound.
+  // Browser shortcuts (Ctrl/Cmd/Alt + key) are left alone, and while a card is
+  // up only M works, so typing behind a card never trades.
   window.addEventListener('keydown', (e) => {
-    if (e.repeat || e.target.closest('button')) return;
+    if (e.repeat || e.ctrlKey || e.metaKey || e.altKey || e.target.closest('button')) return;
     const k = e.key.toLowerCase();
+    if (!el.cardLayer.hidden && k !== 'm') return;
     if (k === 'b') { press(el.buy); handlers.onBuy(); }
     else if (k === 's') { press(el.sell); handlers.onSell(); }
     else if (k === 'f') { press(el.flat); handlers.onFlat(); }
@@ -154,6 +163,7 @@ export function showNews(ev, { early = 0 } = {}) {
   el.news.style.animation = 'none'; void el.news.offsetWidth; el.news.style.animation = '';
   clearTimeout(newsTimer);
   newsTimer = setTimeout(() => { el.news.hidden = true; }, 5000);
+  announce(`${early ? `Newswire, in ${early} seconds` : 'News'}, ${ev.dir > 0 ? 'up' : 'down'}: ${ev.headline}`);
 }
 /** Neutral notice in the news slot (e.g. Mulligan used). */
 export function showNotice(text) {
@@ -163,6 +173,7 @@ export function showNotice(text) {
   el.news.textContent = text;
   clearTimeout(newsTimer);
   newsTimer = setTimeout(() => { el.news.hidden = true; el.news.style.color = ''; }, 6000);
+  announce(text);
 }
 
 export function renderL2(book) {
@@ -197,6 +208,7 @@ export function setBell(secondsLeft, holding, word = 'FLATTEN') {
     el.clock.classList.remove('pulse');
     return;
   }
+  if (el.bell.hidden) announce(`Closing bell in ${secondsLeft} seconds${holding ? `. ${word.toLowerCase()} your position` : ''}`, true);
   el.bell.hidden = false;
   el.bell.textContent = `BELL 0:${String(secondsLeft).padStart(2, '0')}${holding ? ` · ${word}` : ''}`;
   el.bell.className = 'bell' + (holding ? ' hot' : '');
@@ -205,9 +217,30 @@ export function setBell(secondsLeft, holding, word = 'FLATTEN') {
 
 /** Show or hide the pause cover. `note` swaps its text (Rewind uses it to say why). */
 export function setPaused(p, note = null) {
+  const hadFocus = el.paused.contains(document.activeElement);
   el.paused.hidden = !p;
   el.paused.querySelector('.paused-title').textContent = note?.title || 'Paused';
   el.paused.querySelector('.paused-sub').textContent = note?.sub || 'Tap to resume';
+  if (p) {
+    announce(`${note?.title || 'Paused'}. ${note?.sub || ''}`);
+    if (document.activeElement === el.pauseBtn || note) el.paused.focus({ preventScroll: true });
+  } else if (hadFocus) {
+    el.pauseBtn.focus({ preventScroll: true });
+  }
+}
+
+// ---------- screen readers ----------
+
+/** Say something to screen readers without showing it. `urgent` interrupts. */
+let srClear = 0;
+export function announce(text, urgent = false) {
+  const node = urgent ? el.srAlert : el.sr;
+  if (!node || !text) return;
+  node.textContent = '';
+  // A fresh text node after a beat, so the same words twice are read twice.
+  requestAnimationFrame(() => { node.textContent = text; });
+  clearTimeout(srClear);
+  srClear = setTimeout(() => { el.sr.textContent = ''; el.srAlert.textContent = ''; }, 6000);
 }
 
 // ---------- bottom monitor ----------
@@ -292,6 +325,7 @@ let deniedUntil = 0;
 export function flashDenied(text, ms = 900) {
   deniedUntil = performance.now() + ms;
   el.pos.innerHTML = `<span class="side">${esc(text)}</span>`;
+  announce(text.toLowerCase());
 }
 
 // ---------- tutorial coach ----------
@@ -340,6 +374,7 @@ export function showCard(html, actions = {}, { cls = '', clear = false } = {}) {
   el.card.innerHTML = html;
   el.cardLayer.classList.toggle('clear', clear);
   el.cardLayer.hidden = false;
+  setBehindCard(true);
   el.card.querySelectorAll('[data-action]').forEach((b) => {
     b.addEventListener('click', () => actions[b.dataset.action]?.(), { once: true });
   });
@@ -349,12 +384,18 @@ export function showCard(html, actions = {}, { cls = '', clear = false } = {}) {
 export function hideCard() {
   if (el.cardLayer.hidden) return;
   clearTimeout(leaveTimer);
+  setBehindCard(false);
   el.cardLayer.classList.add('leaving');
   leaveTimer = setTimeout(() => {
     el.cardLayer.hidden = true;
     el.cardLayer.classList.remove('leaving');
     el.card.innerHTML = '';
   }, 180);
+}
+
+/** While a card is up, the monitors and coach behind it can't take focus or clicks. */
+function setBehindCard(on) {
+  for (const n of [...el.screens, el.coach]) n.inert = on;
 }
 
 export function rows(list) {

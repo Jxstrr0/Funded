@@ -71,7 +71,8 @@ export class Chart {
     ctx.font = `600 ${fs}px 'Space Grotesk', system-ui, sans-serif`;
     ctx.textBaseline = 'middle';
 
-    // Grid: 4 price levels.
+    // Grid: 4 price levels. A label the last-price tag would cover is skipped.
+    const ly = y(d.last);
     ctx.strokeStyle = COL.grid;
     ctx.lineWidth = 1;
     ctx.fillStyle = COL.dim;
@@ -80,10 +81,12 @@ export class Chart {
       const p = lo + ((hi - lo) * (i + 0.5)) / 4;
       const yy = Math.round(y(p)) + 0.5;
       ctx.beginPath(); ctx.moveTo(plotL, yy); ctx.lineTo(plotR, yy); ctx.stroke();
-      ctx.fillText(p.toFixed(2), plotR + 3, yy);
+      if (Math.abs(yy - ly) > fs * 1.25) ctx.fillText(p.toFixed(2), plotR + 3, yy);
     }
 
-    // Time axis: hour ticks, labelled.
+    // Time axis: hour ticks, labelled. An hour with a news marker under it
+    // drops its number, so the marker reads cleanly.
+    const markX = d.news.filter((n) => !n.hidden).map((n) => plotL + (n.candle + 0.5) * slotW);
     ctx.textAlign = 'center';
     ctx.textBaseline = 'top';
     for (let hr = 10; hr <= 16; hr++) {
@@ -92,7 +95,8 @@ export class Chart {
       ctx.strokeStyle = COL.grid;
       ctx.beginPath(); ctx.moveTo(xx, plotT); ctx.lineTo(xx, plotB); ctx.stroke();
       ctx.fillStyle = COL.dim;
-      ctx.fillText(String(hr > 12 ? hr - 12 : hr), Math.min(xx, plotR - fs / 2), plotB + 3);
+      const tx = Math.min(xx, plotR - fs / 2);
+      if (!markX.some((mx) => Math.abs(mx - tx) < fs * 0.9)) ctx.fillText(String(hr > 12 ? hr - 12 : hr), tx, plotB + 3);
     }
 
     // News markers on the time axis.
@@ -146,13 +150,14 @@ export class Chart {
       ctx.beginPath(); ctx.moveTo(plotL, yy); ctx.lineTo(plotR, yy); ctx.stroke();
       ctx.setLineDash([]);
       ctx.textAlign = 'left';
-      ctx.textBaseline = 'bottom';
+      // Label above the line, or below it when the line is near the top edge.
+      const above = yy - fs - 2 > plotT;
+      ctx.textBaseline = above ? 'bottom' : 'top';
       ctx.fillStyle = COL.ivory;
-      ctx.fillText(d.avgLabel ?? (d.qty > 0 ? 'AVG ▲ LONG' : 'AVG ▼ SHORT'), plotL + 2, yy - 1);
+      ctx.fillText(d.avgLabel ?? (d.qty > 0 ? 'AVG ▲ LONG' : 'AVG ▼ SHORT'), plotL + 2, above ? yy - 1 : yy + 2);
     }
 
     // Last price tag.
-    const ly = y(d.last);
     ctx.fillStyle = COL.ivory;
     ctx.fillRect(plotR + 1, ly - fs * 0.65, labelW - 1, fs * 1.3);
     ctx.fillStyle = COL.bg;

@@ -117,7 +117,7 @@ export const TIERS = { tier1: TIER1, tier2: TIER2, tier3: TIER3 };
 // It shows small on the title screen, and when it changes on main,
 // .github/workflows/publish-release.yml publishes a GitHub Release, which is
 // where longlight.games reads this game's version and "what's new" line.
-export const VERSION = '0.9.0.1';
+export const VERSION = '0.9.0.2';
 
 // Studio links and shared art.
 export const STUDIO = {
