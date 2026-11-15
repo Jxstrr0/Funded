@@ -39,7 +39,7 @@ export function effectiveRules(perks = [], rules = TIER1, career = {}) {
   }
   if (edges.includes('thetaShield') && rules.option) {
     const t = edgeById('thetaShield');
-    out.option = { ...(out.option || rules.option), shield: { untilMinute: t.untilMinute, rate: t.rate } };
+    out.option = { ...(out.option || rules.option), ivScale: t.ivScale };
   }
   if (mandates.includes('maxOnly')) {
     out.sizes = rules.sizes.filter((s) => s.label === 'MAX');

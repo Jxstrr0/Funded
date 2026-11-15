@@ -72,7 +72,7 @@ export const TIER3 = {
   name: 'Tier 3 · $100k Options Eval',
   short: '$100k options',
   startBalance: 100000,
-  profitTarget: 6000,
+  profitTarget: 5000,          // was 6,000; lowered with the stronger news (0.9.0.4) so careful play can pass
   dailyLossLimit: 3000,
   trailingDrawdown: 6000,
   floorLocksAt: 100000,
@@ -96,8 +96,8 @@ export const TIER3 = {
   // so these aren't tied to the daily limit like the other tiers). Tuned so a blind
   // guess before earnings loses a little on average once the IV pump is paid for.
   shocks: { earnings: [0.02, 0.035], other: [0.008, 0.018] },
-  // Options keep the original news settings (the stronger news in ENGINE.news is for tiers 1 and 2).
-  news: { min: 1, max: 3, minGapCandles: 9, followMinShareOfJump: 0.35, followMaxShareOfJump: 0.9 },
+  // Options keep 1–3 headlines a day, with the longer follow-through of ENGINE.news (was 0.35–0.9).
+  news: { min: 1, max: 3, minGapCandles: 9, followMinShareOfJump: 0.6, followMaxShareOfJump: 1.2 },
   sizes: [
     { label: '25%', share: 0.25 },
     { label: '50%', share: 0.5 },
@@ -117,7 +117,7 @@ export const TIERS = { tier1: TIER1, tier2: TIER2, tier3: TIER3 };
 // It shows small on the title screen, and when it changes on main,
 // .github/workflows/publish-release.yml publishes a GitHub Release, which is
 // where longlight.games reads this game's version and "what's new" line.
-export const VERSION = '0.9.0.3';
+export const VERSION = '0.9.0.4';
 
 // Studio links and shared art.
 export const STUDIO = {
@@ -262,7 +262,7 @@ export const ENGINE = {
   uCurveEdge: 1.6,           // volatility multiplier at open and close
   // Bump when day generation changes: a saved day in progress from an older version restarts
   // from its open (the same seed would now give a different tape).
-  version: 2,
+  version: 3,
   news: {
     min: 2,                  // headlines a day (was 1–3; raised so careful play can reach the target)
     max: 4,
@@ -334,7 +334,7 @@ export const EDGES = [
   { id: 'coffee', name: 'Coffee', weight: 3, desc: 'The clock runs 15% slower.', slowdown: 0.15 },
   { id: 'whisper', name: 'Whisper', weight: 1, desc: "The day-open card tells you which way the day's first headline goes." },
   { id: 'rainmaker', name: 'Rainmaker', weight: 2, desc: 'Rep earned this career x1.25.', repBonus: 0.25 },
-  { id: 'thetaShield', name: 'Theta Shield', weight: 2, tiers: ['tier3'], desc: 'Premium decays at half speed until noon, then catches up by the close.', untilMinute: 720, rate: 0.5 },
+  { id: 'thetaShield', name: 'Theta Shield', weight: 2, tiers: ['tier3'], desc: 'Options are priced 15% cheaper (lower implied volatility).', ivScale: 0.85 },
 ];
 
 // Mandates: optional handicaps chosen before a career, for more Rep.
