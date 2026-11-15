@@ -67,15 +67,22 @@ document.addEventListener('visibilitychange', () => {
 async function load() {
   if (loading) return;
   loading = true;
-  await Promise.all(Object.entries(AUDIO.files).map(async ([name, file]) => {
-    try {
-      const res = await fetch(`assets/audio/${file}`);
-      if (!res.ok) return;
-      const data = await res.arrayBuffer();
-      buffers[name] = await new Promise((ok, bad) => ctx.decodeAudioData(data, ok, bad));
-    } catch { /* keep the synth fallback */ }
-  }));
-  syncLoops();
+  // Short effects first, then the menu music, then the day loops, so a slow
+  // connection isn't fetching rain and day music while the title is playing.
+  const late = ['ambience', 'dayMusic', 'rain'];
+  const names = Object.keys(AUDIO.files);
+  const groups = [names.filter((n) => n !== 'music' && !late.includes(n)), ['music'], late];
+  for (const group of groups) {
+    await Promise.all(group.filter((n) => AUDIO.files[n]).map(async (name) => {
+      try {
+        const res = await fetch(`assets/audio/${AUDIO.files[name]}`);
+        if (!res.ok) return;
+        const data = await res.arrayBuffer();
+        buffers[name] = await new Promise((ok, bad) => ctx.decodeAudioData(data, ok, bad));
+      } catch { /* keep the synth fallback */ }
+    }));
+    syncLoops();
+  }
 }
 
 function applyLevels() {
