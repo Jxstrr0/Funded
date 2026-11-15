@@ -38,6 +38,7 @@ const S = {
   tgtMet: false,      // target meter already full (for the one-time pop)
   tape: [],           // Rewind edge: recent day snapshots [{elapsed, day, revealed}]
   hinted: 0,          // Tape Reader: news markers already showing their direction
+  warned: false,      // screen readers were told a rule meter passed 80%
 };
 
 let meta = loadMeta();
@@ -66,12 +67,12 @@ function showDesk() {
   const rain = rainDay(S.run) && RULES.rainBackdrop;
   fx.setBackdrop(rain || RULES.backdrop, { tod: !rain, rain: rain ? S.run.tier || 'tier1' : null });
   setRain(!!rain);
-  syncProps();
+  syncProps(!!rain);
 }
 
-function syncProps() {
+function syncProps(rain = rainDay(S.run) && !!RULES.rainBackdrop) {
   fx.setDeskProps(S.run && !S.tutorial ? S.run.tier || 'tier1' : null, S.run && !S.tutorial ? S.run.edges || [] : []);
-  setDeskMouse(S.run && !S.tutorial ? S.run.tier || 'tier1' : 'tier1');
+  setDeskMouse(S.run && !S.tutorial ? S.run.tier || 'tier1' : 'tier1', rain);
 }
 
 /** Today's rules for the run: tier + perks + the career's edges and mandates. */
@@ -108,7 +109,10 @@ function render() {
   const m = mark();
   const snap = snapshot(S.run, S.day, m, RULES);
   ui.renderDesk(snap, S.day, S.sizeIndex, m);
-  fx.danger(S.phase === 'running' && !S.tutorial && Math.max(snap.lossUsed, snap.ddUsed) >= 0.8);
+  const hot = S.phase === 'running' && !S.tutorial && Math.max(snap.lossUsed, snap.ddUsed) >= 0.8;
+  fx.danger(hot);
+  if (hot && !S.warned) ui.announce(`Warning: ${snap.lossUsed >= snap.ddUsed ? 'daily loss limit' : 'drawdown'} ${Math.round(Math.max(snap.lossUsed, snap.ddUsed) * 100)}% used`, true);
+  if (S.phase === 'running') S.warned = hot || (S.warned && Math.max(snap.lossUsed, snap.ddUsed) >= 0.75); // slack, so hovering at 80% warns once
   if (snap.targetProgress >= 1 && !S.tgtMet && S.phase === 'running' && !S.tutorial) { fx.targetHit(); sfx.rep(); }
   S.tgtMet = snap.targetProgress >= 1 || (S.tgtMet && snap.targetProgress >= 0.95); // slack, so hovering at 100% pops once
   if (RULES.option) {
@@ -221,6 +225,17 @@ function fill(delta, p, dir = 0) {
   S.day.trades += 1;
   S.dirty = true;
   persist(true);
+  ui.announce(fillWords(r.realized));
+}
+
+/** The fill as words for screen readers: the new position, and any realized P&L. */
+function fillWords(realized) {
+  const d = S.day;
+  const pnl = Math.round(realized) ? ` Realized ${ui.signed(realized).text.replace('▲', 'up').replace('▼', 'down')}.` : '';
+  if (!d.qty) return `Flat.${pnl}`;
+  if (d.right) return `${d.qty} ${d.right === 'C' ? 'call' : 'put'}${d.qty > 1 ? 's' : ''} at ${d.avg.toFixed(2)}.${pnl}`;
+  const n = Math.abs(d.qty).toLocaleString('en-US');
+  return `${d.qty > 0 ? 'Long' : 'Short'} ${n} ${RULES.contract ? 'contracts' : 'shares'} at ${d.avg.toFixed(2)}.${pnl}`;
 }
 
 // ---------- the loop ----------
@@ -867,6 +882,7 @@ function playIntroVideo(next) {
     done = true;
     clearTimeout(guard);
     frame.removeEventListener('pointerdown', finish);
+    window.removeEventListener('keydown', finish);
     ui.setFrameMode('desk', 'ui');
     // Keep .vid a moment so the desk appears at once instead of with the CSS fade.
     setTimeout(() => frame.classList.remove('vid'), 200);
@@ -875,13 +891,15 @@ function playIntroVideo(next) {
   };
   const guard = setTimeout(finish, ((v.duration || 3) + 2) * 1000); // never hang on a stalled clip
   v.addEventListener('ended', finish, { once: true });
-  frame.addEventListener('pointerdown', finish); // tap to skip
+  frame.addEventListener('pointerdown', finish); // tap or any key skips
+  window.addEventListener('keydown', finish);
   v.currentTime = 0;
   v.play().then(() => frame.classList.add('vid')).catch(() => {
     if (done) return;
     done = true;
     clearTimeout(guard);
     frame.removeEventListener('pointerdown', finish);
+    window.removeEventListener('keydown', finish);
     cssIntro(next);
   });
 }

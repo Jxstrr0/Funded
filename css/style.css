@@ -98,6 +98,8 @@ button {
   touch-action: manipulation;
 }
 button:focus-visible { outline: 0.5cqw solid var(--lilac); outline-offset: 0.3cqw; }
+/* Read by screen readers, not shown */
+.sr { position: absolute; width: 1px; height: 1px; margin: -1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
 
 /* ---------- Backdrops and intro ---------- */
 
@@ -329,6 +331,7 @@ button:focus-visible { outline: 0.5cqw solid var(--lilac); outline-offset: 0.3cq
   border-radius: inherit;
   cursor: pointer;
 }
+.paused:focus-visible { outline: 0.5cqw solid var(--lilac); outline-offset: -0.8cqw; }
 .paused-title { font-size: 6cqw; font-weight: 700; color: var(--lilac); letter-spacing: 0.06em; text-transform: uppercase; }
 .paused-sub { font-size: 3cqw; color: var(--dim); text-align: center; max-width: 80%; }
 
@@ -650,6 +653,9 @@ button:focus-visible { outline: 0.5cqw solid var(--lilac); outline-offset: 0.3cq
   pointer-events: none;
   text-shadow: 0 0.3cqw 1.2cqw rgba(0, 0, 0, 0.7);
   animation: pnlpop 1250ms ease-out forwards;
+  /* a newer pop pushes the older ones up a line instead of landing on them */
+  translate: 0 calc(var(--lift, 0) * -5.2cqw);
+  transition: translate 180ms ease-out;
 }
 @keyframes pnlpop {
   0% { opacity: 0; transform: translate(-50%, 0) scale(0.8); }

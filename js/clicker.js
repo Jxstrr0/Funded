@@ -84,12 +84,13 @@ function moveDeskMouse(x, y, ms) {
  * Put the desk mouse layers in for a tier (EDGE_PROPS-style crops from
  * art/build_props.py --mouse): a clean plate of the desk without the mouse and
  * the mouse itself on top, each with -am / -pm versions that follow the time
- * of day. Shown only once every file has loaded; until then the mouse baked
- * into the desk render stays put.
+ * of day. A rain day (`rain` true) uses the -rain pair instead, which has no
+ * time of day. Shown only once every file has loaded; until then the mouse
+ * baked into the desk render stays put.
  */
-export function setDeskMouse(tier) {
+export function setDeskMouse(tier, rain = false) {
   const r = tier && CLICKER.mouse.layout[tier];
-  const key = r ? tier : '';
+  const key = r ? tier + (rain ? '-rain' : '') : '';
   if (mouse.dataset.key === key) return;
   mouse.dataset.key = key;
   mouse.classList.remove('ok');
@@ -104,7 +105,7 @@ export function setDeskMouse(tier) {
     const img = document.createElement('img');
     img.alt = '';
     img.className = 'm-layer';
-    if (tod) img.dataset.tod = tod;
+    if (tod && tod !== 'rain') img.dataset.tod = tod;
     if (style) img.style.cssText = style;
     waiting++;
     img.onload = () => { if (--waiting === 0 && mouse.dataset.key === key) mouse.classList.add('ok'); };
@@ -112,7 +113,8 @@ export function setDeskMouse(tier) {
     img.src = `${CLICKER.mouse.dir}/${tier}-${name}${tod ? '-' + tod : ''}.webp`;
     parent.appendChild(img);
   };
-  for (const tod of [null, 'am', 'pm']) layer(mouse, 'plate', tod, box);
-  for (const tod of [null, 'am', 'pm']) layer(hand, 'mouse', tod);
+  const tods = rain ? ['rain'] : [null, 'am', 'pm'];
+  for (const tod of tods) layer(mouse, 'plate', tod, box);
+  for (const tod of tods) layer(hand, 'mouse', tod);
   mouse.appendChild(hand);
 }
