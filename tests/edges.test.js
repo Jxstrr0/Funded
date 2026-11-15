@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { edgePool, drawEdges, choiceCount, openDraft, draftOffer, rerollDraft, takeEdge, headStart, careerOf, repMultiplier } from '../js/edges.js';
 import { newRun, effectiveRules } from '../js/rules.js';
 import { reputationFor } from '../js/meta.js';
-import { decayed, quoteAt } from '../js/options.js';
+import { quoteAt } from '../js/options.js';
 import { generateDay, hashSeed } from '../js/engine.js';
 import { TIER1, TIER2, TIER3, EDGES, SESSION } from '../js/config.js';
 
@@ -50,7 +50,7 @@ test('edges and mandates change the rules', () => {
   const o = effectiveRules([], TIER3, { hot: true, edges: ['thetaShield'] });
   assert.equal(o.option.premiumBudget, 2400);
   assert.equal(o.maxContracts, 48);
-  assert.ok(o.option.shield);
+  assert.equal(o.option.ivScale, 0.85);
   assert.equal(TIER3.option.premiumBudget, 2000, 'tier config is never mutated');
   assert.equal(effectiveRules([], TIER1, { edges: ['thetaShield'] }).option, undefined);
   const m = effectiveRules([], TIER1, { mandates: ['maxOnly', 'noFlatten', 'blindNews'] });
@@ -79,16 +79,14 @@ test('Rep multiplier: mandates add, Rainmaker multiplies', () => {
   assert.equal(r.parts.bonus, 15);
 });
 
-test('Theta Shield: half the decay until noon, caught up by the bell', () => {
-  const sh = { untilMinute: 720, rate: 0.5 };
-  const fn = (720 - SESSION.marketOpenMinute) / SESSION.marketMinutes;
-  assert.ok(Math.abs(decayed(fn, sh) - fn / 2) < 1e-12);
-  assert.ok(Math.abs(decayed(fn + 1e-9, sh) - fn / 2) < 1e-6, 'continuous at noon');
-  assert.ok(Math.abs(decayed(1, sh) - 1) < 1e-12);
+test('Theta Shield: options price cheaper, both ways, and still expire at intrinsic', () => {
   const d = generateDay({ seed: hashSeed(5, 1), rules: TIER3, dayStartBalance: 100000 });
-  const flat = { ...d, ticks: new Float64Array(d.ticks.length).fill(d.strike), earningsTick: null };
-  const shielded = { ...TIER3, option: { ...TIER3.option, shield: sh } };
-  assert.ok(quoteAt(flat, 700, shielded).call > quoteAt(flat, 700, TIER3).call);
+  const shielded = effectiveRules([], TIER3, { edges: ['thetaShield'] });
+  for (const t of [0, 700]) {
+    assert.ok(quoteAt(d, t, shielded).call < quoteAt(d, t, TIER3).call, `call cheaper at ${t}`);
+    assert.ok(quoteAt(d, t, shielded).put < quoteAt(d, t, TIER3).put, `put cheaper at ${t}`);
+  }
+  const flat = { ...d, ticks: new Float64Array(d.ticks.length).fill(d.strike + 3), earningsTick: null };
   assert.equal(quoteAt(flat, 1871, shielded).call, quoteAt(flat, 1871, TIER3).call);
 });
 
