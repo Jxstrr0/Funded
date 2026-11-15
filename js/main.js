@@ -1,11 +1,11 @@
 // Boot, intro, and the game state machine.
-import { TIER1, TIERS, SESSION, PERKS, TUTORIAL, STUDIO, VERSION, EDGES, MANDATES, REGIME_TEXT, ENGINE, WEATHER, EDGE_PROPS } from './config.js';
+import { TIER1, TIERS, SESSION, PERKS, TUTORIAL, STUDIO, VERSION, EDGES, MANDATES, REGIME_TEXT, ENGINE, WEATHER, EDGE_PROPS, CLICKER } from './config.js';
 import * as fx from './fx.js';
 import { generateDay, candlesUpTo, hashSeed, bookAt } from './engine.js';
 import { newRun, newDay, applyFill, orderDelta, optionOrder, snapshot, closeDay, RULE_TEXT, effectiveRules, applyMulligan, openPnl } from './rules.js';
 import { edgeById, mandateById, careerOf, openDraft, draftOffer, rerollDraft, rerollsAllowed, takeEdge, headStart, repMultiplier } from './edges.js';
 import { quoteAt } from './options.js';
-import { loadMeta, saveMeta, reputationFor, buyPerk, canBuy } from './meta.js';
+import { loadMeta, saveMeta, reputationFor, buyPerk, canBuy, recordDay, recordEdge, recordEval, recordCareer, favouriteEdge } from './meta.js';
 import { createTutorial } from './tutorial.js';
 import { Chart } from './chart.js';
 import * as ui from './ui.js';
@@ -78,6 +78,23 @@ function syncProps(rain = rainDay(S.run) && !!RULES.rainBackdrop) {
 /** Today's rules for the run: tier + perks + the career's edges and mandates. */
 function applyRunRules() {
   useRules(effectiveRules(S.run.perks || [], tierOf(S.run), careerOf(S.run)));
+  warmTier(tierOf(S.run));
+}
+
+// Offline play: once a career reaches a tier, ask sw.js to save that tier's
+// desks (plain, morning, evening, rain, pass), desk mouse and edge props.
+const warmed = new Set();
+function warmTier(t) {
+  const sw = navigator.serviceWorker && navigator.serviceWorker.controller;
+  if (!sw || !t || warmed.has(t.id)) return;
+  warmed.add(t.id);
+  const urls = [t.backdrop, t.rainBackdrop, t.fundedBackdrop].filter(Boolean);
+  if (t.backdrop) urls.push(t.backdrop.replace(/\.jpg$/, '-am.jpg'), t.backdrop.replace(/\.jpg$/, '-pm.jpg'));
+  if (CLICKER.mouse.layout[t.id]) {
+    for (const part of ['mouse', 'plate']) for (const v of ['', '-am', '-pm', '-rain']) urls.push(`${CLICKER.mouse.dir}/${t.id}-${part}${v}.webp`);
+  }
+  for (const id of Object.keys(EDGE_PROPS.layout[t.id] || {})) urls.push(`${EDGE_PROPS.dir}/${t.id}/${id}.webp`);
+  try { sw.postMessage({ warm: urls }); } catch { /* offline saving is a bonus */ }
 }
 
 // ---------- helpers ----------
@@ -485,6 +502,7 @@ function afterDraft(next, { rerolled = false } = {}) {
   for (const id of offer) {
     actions['e_' + id] = () => {
       S.run = takeEdge(S.run, id);
+      bumpStats((st) => recordEdge(st, id));
       persist(true);
       sfx.pick();
       syncProps();
@@ -595,6 +613,7 @@ function closingBell() {
   if (S.day.qty !== 0 && breach('flatAtBell') !== 'mulligan') return;
 
   const { run, outcome, result } = closeDay(S.run, S.day, RULES);
+  bumpStats((st) => recordDay(st, S.run.tier, result.pnl));
   const prevFloor = S.run.floor;
   S.run = outcome === 'next' ? openDraft(run) : run;
   if (outcome === 'next') persist(true);
@@ -634,7 +653,7 @@ function fire(rule) {
   fx.setBackdrop(STUDIO.firedBackdrop, { tod: false, props: false }); // the edges go in the box
   const t = RULE_TEXT[rule];
   const snap = snapshot(S.run, S.day, mark(), RULES);
-  const rep = award(false);
+  const rep = award('fired');
   ui.showCard(`
     <div class="eyebrow">Day ${S.run.day} · ${ui.clockText(minuteNow())}</div>
     <h1 class="fired stamp">You're fired.</h1>
@@ -655,7 +674,7 @@ function fire(rule) {
 function evalOver(rule) {
   sfx.fired();
   const t = RULE_TEXT[rule];
-  const rep = award(false);
+  const rep = award('notFunded');
   ui.showCard(`
     <div class="eyebrow">Eval over</div>
     <h1 class="fired stamp">Not funded.</h1>
@@ -682,7 +701,7 @@ function passed() {
   fx.screenFlash('pass');
   fx.buzz([20, 30, 20, 30, 60]);
   const r = S.run;
-  const rep = award(true);
+  const rep = award('pass');
   if (RULES.fundedBackdrop) fx.setBackdrop(RULES.fundedBackdrop, { tod: false, props: false });
   if (RULES.next) return promoted(r, rep);
   ui.showCard(`
@@ -708,6 +727,7 @@ function promoted(r, rep) {
   const perks = r.perks;
   const from = RULES;
   S.run = openDraft(newRun(next, undefined, perks, { edges: r.edges, mandates: r.mandates, rewinds: r.rewinds }));
+  S.run.careerDays = (r.careerDays || 0) + r.history.length; // for the longest-career stat
   persist(true);
   ui.showCard(`
     <div class="eyebrow">Eval passed · promoted</div>
@@ -727,12 +747,22 @@ function promoted(r, rep) {
 
 // ---------- reputation and perks ----------
 
-function award(passedEval) {
+/** Bank Rep for a finished eval ('pass', 'fired' or 'notFunded') and count it in the stats. */
+function award(outcome) {
+  const passedEval = outcome === 'pass';
   const rep = reputationFor(S.run.history, passedEval, undefined, repMultiplier(S.run));
-  meta = { ...meta, rep: meta.rep + rep.total, runs: meta.runs + 1, passes: meta.passes + (passedEval ? 1 : 0) };
+  let stats = recordEval(meta.stats, S.run.tier, outcome, rep.total);
+  // The career ends unless a pass promotes it; its days run across promotions.
+  if (!(passedEval && RULES.next)) stats = recordCareer(stats, (S.run.careerDays || 0) + S.run.history.length);
+  meta = { ...meta, rep: meta.rep + rep.total, runs: meta.runs + 1, passes: meta.passes + (passedEval ? 1 : 0), stats };
   saveMeta(meta);
   if (rep.total > 0) setTimeout(sfx.rep, 1200);
   return rep;
+}
+
+function bumpStats(fn) {
+  meta = { ...meta, stats: fn(meta.stats) };
+  saveMeta(meta);
 }
 
 function repRows(rep) {
@@ -759,6 +789,36 @@ function shop(back) {
     ${list}
     <button class="cta" data-action="back" style="margin-top:4cqw">Done</button>
   `, actions);
+}
+
+// ---------- career stats ----------
+
+function statsCard(back) {
+  const st = meta.stats;
+  const short = (id) => (TIERS[id] ? TIERS[id].short : '—');
+  const fav = favouriteEdge(st);
+  const best = st.bestDay && st.bestDay.pnl > 0 ? st.bestDay : null; // a green day, or none yet
+  const evals = st.passed.tier1 + st.passed.tier2 + st.passed.tier3 + st.fired + st.notFunded;
+  ui.showCard(`
+    <div class="eyebrow">Career stats</div>
+    <h2>${st.careers} career${st.careers === 1 ? '' : 's'}</h2>
+    ${ui.rows([
+      ['Evals played', String(evals)],
+      [`Passed · ${short('tier1')}`, String(st.passed.tier1), st.passed.tier1 ? 'up' : ''],
+      [`Passed · ${short('tier2')}`, String(st.passed.tier2), st.passed.tier2 ? 'up' : ''],
+      [`Passed · ${short('tier3')}`, String(st.passed.tier3), st.passed.tier3 ? 'up' : ''],
+      ['Fired', String(st.fired), st.fired ? 'down' : ''],
+      ['Not funded (out of days)', String(st.notFunded)],
+      ['Highest tier reached', short(st.topTier)],
+      ['Days traded', st.days ? `${st.days} · ${Math.round(100 * st.greenDays / st.days)}% green` : '0'],
+      ['Best day', best ? `${ui.signed(best.pnl).text} · ${short(best.tier)}` : '—', best ? 'up' : ''],
+      ['Longest career', `${st.longestCareer} day${st.longestCareer === 1 ? '' : 's'}`],
+      ['Favourite edge', fav && edgeById(fav.id) ? `${edgeById(fav.id).name} · ${fav.n}×` : '—'],
+      ['Reputation earned', String(st.repEarned)],
+    ])}
+    ${st.partial ? '<div class="fine">Counted from v0.9.0.3. Earlier careers aren\'t in here.</div>' : ''}
+    <button class="cta" data-action="back" style="margin-top:4cqw">Done</button>
+  `, { back });
 }
 
 // ---------- tutorial ----------
@@ -848,7 +908,8 @@ function title() {
     <button class="cta ghost" data-action="start">New eval</button>`
     : `<button class="cta" data-action="start">${fresh ? 'Start training day' : 'Start eval'}</button>`}
     ${fresh ? '' : `<button class="cta ghost" data-action="shop">Perk shop · <span class="rep">${meta.rep} Rep</span></button>
-    <button class="cta ghost" data-action="tut">Replay tutorial</button>`}
+    <div class="cta-row"><button class="cta ghost" data-action="stats">Career stats</button>
+    <button class="cta ghost" data-action="tut">Replay tutorial</button></div>`}
     <button class="cta ghost small" data-action="audio">${AUDIO_LABEL[audioMode()]}</button>
     <div class="fine">Desktop: B buy · S sell · F flatten · 1–3 size · P pause · M sound</div>
     <a class="hub" href="${ui.esc(STUDIO.hubUrl)}">${ui.esc(STUDIO.hubLabel)}</a>
@@ -858,6 +919,7 @@ function title() {
     start: () => (fresh ? intro(startTutorial) : newCareer()),
     cont: () => intro(() => resumeSaved(saved)),
     shop: () => shop(title),
+    stats: () => statsCard(title),
     tut: () => intro(startTutorial),
   }, { cls: 'title-card', clear: true });
 }
@@ -944,10 +1006,23 @@ async function boot() {
   initClicker();
   // Card art that fails to load is dropped, leaving the plain text card.
   document.getElementById('card').addEventListener('error', (e) => { if (e.target.tagName === 'IMG') e.target.remove(); }, true);
-  prepIntroVideo();
-  await Promise.all([loadImage('assets/wide.jpg'), loadImage('assets/desk.jpg')]);
+  // Only the title's own backdrop holds up the title. The desk and the intro
+  // clip load after it, so a slow phone connection gets to the menu sooner.
+  await loadImage('assets/wide.jpg');
+  const desk = document.getElementById('bgDesk');
+  if (!desk.getAttribute('src')) desk.src = desk.dataset.src;
   requestAnimationFrame(frame);
   title();
+  const later = () => { prepIntroVideo(); registerOffline(); };
+  if (document.readyState === 'complete') setTimeout(later, 0);
+  else window.addEventListener('load', later, { once: true });
+}
+
+// Offline play: sw.js keeps the game's files so the home-screen app opens
+// with no signal. The version in its address makes each release install fresh.
+function registerOffline() {
+  if (!('serviceWorker' in navigator) || location.protocol === 'file:') return;
+  navigator.serviceWorker.register(`sw.js?v=${encodeURIComponent(VERSION)}`).catch(() => { /* play on without it */ });
 }
 
 boot();

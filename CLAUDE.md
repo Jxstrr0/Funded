@@ -57,9 +57,33 @@ Read this at the start of every session. The full design spec is `docs/HANDOFF.m
   - **Clicker** (`js/clicker.js`, `CLICKER` in config): on touch, a pointer glides to the button you tap and clicks it. On every input the desk mouse slides a little the same way. It is a plate and mouse crop (`assets/mouse/`) and is hidden on the funded, fired and rain desks.
   - This pass spent about 413 ElevenLabs credits.
 - Polish pass (0.9.0.2, owner asked): favicon, home-screen icons and web manifest (`manifest.webmanifest`), link-preview tags with `assets/og.jpg` (all made by `node tools/icons.mjs` from the wordmark and `wide.jpg`). Keyboard: browser shortcuts (Ctrl/Cmd/Alt) never trade, keys are ignored behind a card, the pause button and cover work with Enter/Space, and any key skips the intro. Screen readers: cards are a modal dialog with the monitors `inert` behind them, and `ui.announce()` reads fills, realized P&L, news, the bell and the 80% rule warning. P&L pops stack instead of overlapping, chart labels give way to the last-price tag and news markers, and rain days now have the moving desk mouse (`-rain` layers).
+- Offline, stats and load pass (0.9.0.3, owner asked):
+  - **Offline play:** `sw.js` (registered as `sw.js?v=<VERSION>`, so each release installs fresh and clears the old cache). Code comes from the network first, falling back to the saved copy after 4 s. Art, sound and fonts come from the saved copy first. `CORE` in `sw.js` is saved at install: everything a Tier 1 career needs. A career reaching Tier 2 or 3 asks it to save that tier's desks (`warmTier` in `js/main.js`). `tests/sw.test.js` checks the `CORE` list. When you add a file the game needs at Tier 1, add it to `CORE` too.
+  - **Career stats:** a card off the title (`meta.stats`, pure functions in `js/meta.js`) with these stats:
+    - careers
+    - passes per tier
+    - fired and not funded
+    - highest tier reached
+    - days traded and the share that were green
+    - best day
+    - longest career (days across promotions)
+    - favourite edge
+    - Rep earned
+
+    Counting starts at 0.9.0.3, and older saves are marked partial.
+  - **First load:**
+    - `modulepreload` for every script.
+    - The title waits only for `wide.jpg`. The desk, the intro clip and the service worker load after it.
+    - Audio loads in this order: effects, then menu music, then the day loops.
+    - On a throttled 1.6 Mbps phone connection, time to the title went from 4.0 s to 2.5 s.
+  - **Tier 3 bot:** `tools/sim.mjs` and `tools/balance.mjs` now cover options (`node tools/balance.mjs [N] [tiers]`). Measured pass rates, careful / aggressive:
+    - Tier 3: 2.6% / 25.6%, against Tier 2 at 19% / 24%.
+    - Almost no one is fired; the misses are the +$6,000 target.
+    - Theta Shield measures as a net negative.
+    - No tuning has changed yet; the owner decides.
 - Visit counts: a cookieless Cloudflare Web Analytics beacon at the end of `index.html` (owner's request, 2026-11-12), shared with the studio's zone-wide analytics site.
-- Version: `VERSION` in `js/config.js` (four numbers, Major.Minor.Patch.Build, now 0.9.0.2), shown small on the title screen. Bump it in any PR that changes what players see. When it changes on `main`, `.github/workflows/publish-release.yml` publishes a GitHub Release titled from the PR, which longlight.games reads for the version and "what's new" line.
-- Next: nothing scheduled. Open item: Daily Challenge (handoff §12).
+- Version: `VERSION` in `js/config.js` (four numbers, Major.Minor.Patch.Build, now 0.9.0.3), shown small on the title screen. Bump it in any PR that changes what players see. When it changes on `main`, `.github/workflows/publish-release.yml` publishes a GitHub Release titled from the PR, which longlight.games reads for the version and "what's new" line.
+- Next: owner to decide on Tier 3 tuning (bot levers in the 0.9.0.3 entry above). Open item: Daily Challenge (handoff §12).
 - Update this section when a stage lands.
 
 ## Security and privacy (studio baseline)

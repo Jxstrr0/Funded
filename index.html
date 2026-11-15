@@ -28,14 +28,29 @@
   <meta name="twitter:card" content="summary_large_image">
   <link rel="preload" as="font" type="font/woff2" href="assets/fonts/space-grotesk-latin.woff2" crossorigin>
   <link rel="stylesheet" href="css/style.css">
-  <link rel="preload" as="image" href="assets/wide.jpg">
-  <link rel="preload" as="image" href="assets/desk.jpg">
+  <link rel="preload" as="image" href="assets/wide.jpg" fetchpriority="high">
+  <!-- Fetch every module at once instead of one import at a time. -->
+  <link rel="modulepreload" href="js/main.js">
+  <link rel="modulepreload" href="js/config.js">
+  <link rel="modulepreload" href="js/engine.js">
+  <link rel="modulepreload" href="js/rules.js">
+  <link rel="modulepreload" href="js/ui.js">
+  <link rel="modulepreload" href="js/chart.js">
+  <link rel="modulepreload" href="js/audio.js">
+  <link rel="modulepreload" href="js/fx.js">
+  <link rel="modulepreload" href="js/clicker.js">
+  <link rel="modulepreload" href="js/edges.js">
+  <link rel="modulepreload" href="js/meta.js">
+  <link rel="modulepreload" href="js/save.js">
+  <link rel="modulepreload" href="js/tutorial.js">
+  <link rel="modulepreload" href="js/options.js">
 </head>
 <body>
   <main class="frame" id="frame">
     <img class="bg bg-wide" id="bgWide" src="assets/wide.jpg" alt="">
     <video class="bg bg-intro" id="bgIntro" muted playsinline preload="auto" aria-hidden="true"></video>
-    <img class="bg bg-desk" id="bgDesk" src="assets/desk.jpg" alt="">
+    <!-- The desk loads once the title backdrop is in (js/main.js boot). -->
+    <img class="bg bg-desk" id="bgDesk" data-src="assets/desk.jpg" alt="">
     <img class="bg bg-tod" id="bgAm" alt="">
     <img class="bg bg-tod" id="bgPm" alt="">
     <img class="bg bg-alt" id="bgAlt" alt="">
