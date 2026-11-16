@@ -36,7 +36,11 @@ export class Chart {
 
   /**
    * @param {{candles: Array<{o,h,l,c}>, last: number, avg: number|null, qty: number,
-   *          news: Array<{candle:number, revealed:boolean, dir:number, hidden?:boolean}>, slot: number}} d
+   *          news: Array<{candle:number, revealed:boolean, dir:number, hidden?:boolean}>, slot: number,
+   *          fills?: Array<{candle:number, price:number, dir:number, pnl?:number}>,
+   *          halts?: Array<{from:number, to:number}>, review?: boolean}} d
+   * fills: your trades (dir +1 buy/call, -1 sell/put, 0 flatten/close), pnl when one closed a position.
+   * halts: halted candle ranges. review: label each closed trade's P&L (end-of-day review).
    */
   draw(d) {
     this.data = d;
@@ -127,6 +131,19 @@ export class Chart {
       }
     }
 
+    // Trading halts: a lilac band over the halted candles.
+    for (const hz of d.halts || []) {
+      const x0 = plotL + hz.from * slotW;
+      const x1 = plotL + Math.min(hz.to, d.candles.length) * slotW;
+      if (x1 <= x0) continue;
+      ctx.fillStyle = 'rgba(180,140,232,0.14)';
+      ctx.fillRect(x0, plotT, x1 - x0, plotB - plotT);
+      ctx.fillStyle = COL.lilac;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'top';
+      if (x1 - x0 > fs * 1.6) ctx.fillText('HALT', (x0 + x1) / 2, plotT + 2);
+    }
+
     // Candles.
     const bodyW = Math.max(1, slotW * 0.66);
     d.candles.forEach((c, i) => {
@@ -141,6 +158,48 @@ export class Chart {
       const bh = Math.max(1, y(Math.min(c.o, c.c)) - top);
       ctx.fillRect(cx - bodyW / 2, top, bodyW, bh);
     });
+
+    // Your fills: up-triangles for buys and calls under the price, down-triangles
+    // for sells and puts over it, diamonds for flattens and closes.
+    const fsz = fs * 0.38;
+    for (const f of d.fills || []) {
+      if (f.candle >= d.candles.length) continue;
+      const cx = plotL + (f.candle + 0.5) * slotW;
+      const py = y(f.price);
+      ctx.beginPath();
+      if (f.dir > 0) {
+        const cy = py + fsz * 1.6;
+        ctx.fillStyle = COL.up;
+        ctx.moveTo(cx, cy - fsz); ctx.lineTo(cx + fsz, cy + fsz * 0.8); ctx.lineTo(cx - fsz, cy + fsz * 0.8);
+      } else if (f.dir < 0) {
+        const cy = py - fsz * 1.6;
+        ctx.fillStyle = COL.down;
+        ctx.moveTo(cx, cy + fsz); ctx.lineTo(cx + fsz, cy - fsz * 0.8); ctx.lineTo(cx - fsz, cy - fsz * 0.8);
+      } else {
+        ctx.fillStyle = COL.ivory;
+        ctx.moveTo(cx, py - fsz); ctx.lineTo(cx + fsz, py); ctx.lineTo(cx, py + fsz); ctx.lineTo(cx - fsz, py);
+      }
+      ctx.closePath();
+      ctx.fill();
+      ctx.strokeStyle = COL.bg;
+      ctx.lineWidth = 1;
+      ctx.stroke();
+      const r = d.review && f.pnl ? Math.round(f.pnl) : 0;
+      if (!r) continue;
+      const txt = (r > 0 ? '▲ +$' : '▼ −$') + Math.abs(r).toLocaleString('en-US');
+      const below = f.dir > 0 || (f.dir === 0 && py < (plotT + plotB) / 2);
+      ctx.font = `700 ${Math.round(fs * 0.85)}px 'Space Grotesk', system-ui, sans-serif`;
+      ctx.textAlign = cx > plotR - fs * 3 ? 'right' : cx < plotL + fs * 3 ? 'left' : 'center';
+      ctx.textBaseline = below ? 'top' : 'bottom';
+      const ty = Math.max(plotT + fs, Math.min(plotB - fs, below ? py + fsz * 3 : py - fsz * 3));
+      ctx.lineWidth = 3;
+      ctx.strokeStyle = COL.bg;
+      ctx.strokeText(txt, cx, ty);
+      ctx.fillStyle = r > 0 ? COL.up : COL.down;
+      ctx.fillText(txt, cx, ty);
+      ctx.font = `600 ${fs}px 'Space Grotesk', system-ui, sans-serif`;
+      ctx.lineWidth = 1;
+    }
 
     // Average price line.
     if (d.avg) {

@@ -89,8 +89,17 @@ Read this at the start of every session. The full design spec is `docs/HANDOFF.m
   - Bot pass rates, careful / aggressive: Tier 3 17.5% / 50.8% (was 2.6% / 25.6%). Theta Shield is worth +3 / +8 points (was −5 to −6).
   - `ENGINE.version` went to 3, so a day saved mid-session (any tier) restarts from its open.
 - Visit counts: a cookieless Cloudflare Web Analytics beacon at the end of `index.html` (owner's request, 2026-11-12), shared with the studio's zone-wide analytics site.
-- Version: `VERSION` in `js/config.js` (four numbers, Major.Minor.Patch.Build, now 0.9.0.4), shown small on the title screen. Bump it in any PR that changes what players see. When it changes on `main`, `.github/workflows/publish-release.yml` publishes a GitHub Release titled from the PR, which longlight.games reads for the version and "what's new" line.
-- Next: open item is the Daily Challenge (handoff §12).
+- Version: `VERSION` in `js/config.js` (four numbers, Major.Minor.Patch.Build, now 0.10.0.0), shown small on the title screen. Bump it in any PR that changes what players see. When it changes on `main`, `.github/workflows/publish-release.yml` publishes a GitHub Release titled from the PR, which longlight.games reads for the version and "what's new" line.
+- Update pass (0.10.0.0, owner chose all of it):
+  - **Daily Challenge** (`js/daily.js`, `DAILY` in config): one seeded day for everyone, numbered from 2026-11-16. The tier rotates by date (Tier 1, 2, 3), with 2 fixed edges (`DAILY_SKIP_EDGES` and cursed edges are left out) and a par. The first try is scored (Rep, streak, share text with ▲/▼ squares via the share sheet or clipboard); replays are practice. It saves apart from the career in `funded.daily.v1`.
+  - **Funded phase** (`FUNDED`, `fundedRules`/`startFunded` in `js/rules.js`): passing Tier 3 gives a funded $100k options account with no target. Every 5 days, 80% of the week's profit is paid out as Rep and the account resets; a red week carries over. It runs until you're fired.
+  - **Day types** (`DAY_TYPES`, `dayTypeFor` in `js/engine.js`): about 1 day in 4 is a Gap open, Fed day (one 14:00 headline), Trend day (fewer headlines, steady drift) or Trading halt (15 minutes frozen, then a reopening jump, both within the shock cap). Shown on the day-open card. `ENGINE.version` is 4.
+  - **End-of-day review:** every result card has "Review the day": the chart marks each fill and labels each closed trade's P&L.
+  - **Achievements** (`ACHIEVEMENTS`, 11) on the stats card; some unlock new edges for the draft.
+  - **New edges:** Insurance (refunds 25% of a red day; unlocked by 5 Dailies), Bell Clerk (closes your position at the bell; unlocked by passing Tier 2), Iron Stomach (drawdown ×1.25), Bigger Book (+2 contracts, futures), Deep Pockets (premium budget ×1.25, options), and the cursed Leverage Loan (sizes ×1.4, daily limit ×0.85; unlocked by getting funded). Each has a desk prop and card art.
+  - **Balance:** Tier 3 MAX now carries real risk (premium budget $3,500, target +$7,500); Tier 2 daily limit $1,800.
+  - **Guides:** "Guides" on the title replays training and explains futures, options and day types with worked examples; Tier 2 and Tier 3 show their guide on the first visit.
+- Next: no open items in handoff §12; ask the owner.
 - Update this section when a stage lands.
 
 ## Security and privacy (studio baseline)
@@ -98,7 +107,7 @@ Read this at the start of every session. The full design spec is `docs/HANDOFF.m
 - **Name:** use the name Kelbo only. Never his real name, initials or email, anywhere in the repo: files, commit messages, PR text.
 - **Commits:** author them as `Jxstrr0 <322161611+Jxstrr0@users.noreply.github.com>` or `Claude <noreply@anthropic.com>`, never a personal email address.
 - **No secrets.** The repo is public: no keys, tokens or passwords in any file or commit.
-- **Storage:** localStorage keys start `funded.` (`funded.run.v1`, `funded.meta.v1`, `funded.audio.v1`), every access in try/catch. Never `localStorage.clear()`, and never touch another game's keys.
+- **Storage:** localStorage keys start `funded.` (`funded.run.v1`, `funded.meta.v1`, `funded.audio.v1`, `funded.daily.v1`), every access in try/catch. Never `localStorage.clear()`, and never touch another game's keys.
 - **Content-Security-Policy:** `index.html` has a CSP meta tag that lets the page load only its own files. If the game ever needs something from another address, add that address to the tag in the same PR, or the browser will block it. The one outside script is Cloudflare's cookieless visit counter (`static.cloudflareinsights.com` in `script-src`, `cloudflareinsights.com` in `connect-src`; owner's request, 2026-11-12). No other outside scripts, fonts or CDNs: Space Grotesk is self-hosted in `assets/fonts/` (SIL OFL 1.1, copied from the studio site with the owner's OK).
 - **Page text:** `innerHTML` only ever gets the game's own strings and numbers. Anything a player could type or paste (a future save code, a name) goes in with `textContent` or through `esc()` in `js/ui.js`.
 - The studio's security cycle (the `longlight-security-cycle` skill in `Jxstrr0/longlight-assets`) scans this repo with the others.

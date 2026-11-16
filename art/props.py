@@ -855,7 +855,501 @@ def build_whisper(col=None, loc=(0, 0, 0), rot_z=0.0, scale=1.0):
     return p
 
 
+# =====================================================================================
+# insurance: a cream policy envelope, flap up, closed with a dark red wax seal
+# =====================================================================================
+def build_insurance(col=None, loc=(0, 0, 0), rot_z=0.0, scale=1.0, W=0.105, D=0.062):
+    """Lies flat, back up: the pointed flap toward -Y (the camera) with the seal on its tip."""
+    p = empty("prop_insurance", loc, (0, 0, rot_z), col, scale)
+    T = 0.0032
+    # body: a thin pillow (thicker in the middle where the folded policy is)
+    nx, ny = 24, 14
+    bm = bmesh.new()
+    top, bot = [], []
+    for i in range(nx + 1):
+        rt, rb = [], []
+        for j in range(ny + 1):
+            u, v = i / nx - 0.5, j / ny - 0.5
+            x, y = u * W, v * D
+            puff = (1 - (2 * u) ** 6) * (1 - (2 * v) ** 6)
+            rt.append(bm.verts.new((x, y, 0.0006 + (T - 0.0006) * puff)))
+            rb.append(bm.verts.new((x, y, 0.0)))
+        top.append(rt)
+        bot.append(rb)
+    for i in range(nx):
+        for j in range(ny):
+            bm.faces.new((top[i][j], top[i + 1][j], top[i + 1][j + 1], top[i][j + 1]))
+            bm.faces.new((bot[i][j + 1], bot[i + 1][j + 1], bot[i + 1][j], bot[i][j]))
+    for i in range(nx):       # the four thin edges
+        bm.faces.new((bot[i][0], bot[i + 1][0], top[i + 1][0], top[i][0]))
+        bm.faces.new((top[i][ny], top[i + 1][ny], bot[i + 1][ny], bot[i][ny]))
+    for j in range(ny):
+        bm.faces.new((top[0][j], top[0][j + 1], bot[0][j + 1], bot[0][j]))
+        bm.faces.new((bot[nx][j], bot[nx][j + 1], top[nx][j + 1], top[nx][j]))
+    me = bpy.data.meshes.new("envelope")
+    bm.to_mesh(me)
+    bm.free()
+    paper = pmat("env_paper", "#efe4c8", 0.78, sss=0.04)
+    mesh_ob("env_body", me, paper, parent=p, col=col)
+
+    def h(x, y):
+        u, v = x / W, y / D
+        return 0.0006 + (T - 0.0006) * (1 - (2 * u) ** 6) * (1 - (2 * v) ** 6)
+    # the flap: a slightly darker triangle from the back edge to a point near the front, on the puff
+    tip = (0.0, -D * 0.18)
+    shade = pmat("env_flap", "#e6d8b6", 0.72, sss=0.04)
+    bm = bmesh.new()
+    N = 14
+    rows = []
+    for k in range(N + 1):
+        t = k / N
+        yy = D / 2 - 0.0012 + (tip[1] - D / 2 + 0.0012) * t
+        half = (W / 2 - 0.0012) * (1 - t) + 0.004 * t
+        row = []
+        for m in range(9):
+            xx = -half + 2 * half * m / 8
+            row.append(bm.verts.new((xx, yy, h(xx, yy) + 0.00035)))
+        rows.append(row)
+    for a, b in zip(rows, rows[1:]):
+        for m in range(8):
+            bm.faces.new((a[m], a[m + 1], b[m + 1], b[m]))
+    me = bpy.data.meshes.new("flap")
+    bm.to_mesh(me)
+    bm.free()
+    mesh_ob("env_flap", me, shade, parent=p, col=col)
+    # a printed line on the body near the front edge, under the flap: "POLICY ENCLOSED"
+    ink = pmat("env_ink", "#2a3350", 0.6)
+    text_ob("env_txt", "POLICY  ENCLOSED", D * 0.085, ink, (0.0, -D * 0.40, h(0, -D * 0.4) + 0.0004),
+            rot=(0, 0, 0), parent=p, col=col, spacing=1.15)
+    # wax seal on the flap tip: a squashed, slightly irregular blob with a pressed ring and crest
+    wax = pmat("wax", "#5a0a10", 0.32, coat=0.5, sss=0.05)
+    zs = h(tip[0], tip[1]) + 0.0003
+    rng = random.Random(11)
+    blob = lambda a, z: 1.0 + 0.07 * math.sin(3 * a + 0.4) + 0.05 * math.sin(7 * a + 1.1)
+    mesh_ob("wax_seal", lathe("seal", [(0.0, zs), (0.0098, zs), (0.0104, zs + 0.0007), (0.0098, zs + 0.0017),
+                                     (0.0082, zs + 0.0024), (0.0, zs + 0.0025)], n=48, wobble=blob),
+            wax, loc=(tip[0], tip[1], 0), parent=p, col=col)
+    mesh_ob("wax_ring", torus("ring", 0.0062, 0.00055, 40, 8), wax, loc=(tip[0], tip[1], zs + 0.0025), parent=p, col=col)
+    mesh_ob("wax_crest", lathe("crest", [(0.0, zs + 0.0024), (0.0034, zs + 0.0024), (0.0030, zs + 0.0032), (0.0, zs + 0.0034)],
+                               n=6), wax, loc=(tip[0], tip[1], 0), rot=(0, 0, rng.uniform(0, 1)), parent=p, col=col)
+    return p
+
+
+# =====================================================================================
+# bellClerk: a chrome stopwatch lying on its back
+# =====================================================================================
+def build_bellClerk(col=None, loc=(0, 0, 0), rot_z=0.0, scale=1.0):
+    """Crown and bow point toward +Y (away from the camera) at rot_z = 0."""
+    p = empty("prop_bellClerk", loc, (0, 0, rot_z), col, scale)
+    R, Tk = 0.0215, 0.012
+    chrome = pmat("chrome", "#dfe3ea", 0.08, metal=1.0)
+    # case: a rounded pebble profile
+    prof = [(0.0, 0.0), (R * 0.70, 0.0), (R * 0.92, 0.0015), (R, Tk * 0.45), (R * 0.985, Tk * 0.75), (R * 0.93, Tk * 0.9),
+            (R * 0.90, Tk * 0.9)]
+    mesh_ob("sw_case", lathe("case", prof, n=72, cap_top=False), chrome, parent=p, col=col)
+    zf = Tk * 0.86
+    # dial, crystal
+    dial = pmat("sw_dial", "#f6f3ec", 0.45)
+    mesh_ob("sw_dial", lathe("dial", [(0.0, zf), (R * 0.88, zf)], n=72, cap_top=False, cap_bot=False), dial, parent=p, col=col)
+    glass = pmat("sw_glass", "#ffffff", 0.02, trans=1.0, ior=1.5)
+    g = mesh_ob("sw_glass", lathe("crystal", [(R * 0.90, Tk * 0.9), (R * 0.80, Tk * 0.98), (R * 0.5, Tk * 1.03), (0.0, Tk * 1.04)],
+                                  n=72, cap_bot=False), glass, parent=p, col=col)
+    no_shadow(g)
+    ink = pmat("ink", "#1b2340", 0.6)
+    red = pmat("red_ink", "#E5484D", 0.5)
+    tick = rbox("tick", 0.0007, 0.0028, 0.0002)
+    tick_s = rbox("tick_s", 0.0004, 0.0013, 0.0002)
+    for k in range(60):
+        a = math.pi / 2 - k * 2 * math.pi / 60
+        big = k % 5 == 0
+        rr = R * (0.76 if big else 0.80)
+        mesh_ob("sw_tick", (tick if big else tick_s).copy(), None, loc=(rr * math.cos(a), rr * math.sin(a), zf + 0.0002),
+                rot=(0, 0, a - math.pi / 2), parent=p, col=col, smooth=False).data.materials.append(ink)
+    # a small sub-dial and the two hands
+    mesh_ob("sw_sub", torus("sub", R * 0.2, 0.00025, 32, 6), ink, loc=(0, -R * 0.36, zf + 0.0002), parent=p, col=col)
+    mesh_ob("sw_hand", rbox("hand", 0.0007, R * 0.86, 0.0004), red, loc=(R * 0.86 / 2 * math.sin(0.9), R * 0.86 / 2 * math.cos(0.9) - 0.0,
+            zf + 0.0009), rot=(0, 0, -0.9), parent=p, col=col, smooth=False)
+    mesh_ob("sw_hand_tail", rbox("tail", 0.0009, R * 0.22, 0.0004), red, loc=(-R * 0.11 * math.sin(0.9), -R * 0.11 * math.cos(0.9),
+            zf + 0.0009), rot=(0, 0, -0.9), parent=p, col=col, smooth=False)
+    mesh_ob("sw_hand2", rbox("hand2", 0.0006, R * 0.14, 0.0003), ink, loc=(R * 0.07 * math.sin(-2.2), -R * 0.36 + R * 0.07 * math.cos(-2.2),
+            zf + 0.0006), rot=(0, 0, 2.2), parent=p, col=col, smooth=False)
+    mesh_ob("sw_pin", lathe("pin", [(0, zf), (0.0011, zf), (0.0011, zf + 0.0013), (0, zf + 0.0014)], n=16), red, parent=p, col=col)
+    # crown stem, crown and the bow (ring) at +Y; two side pushers
+    zc = Tk * 0.48
+    mesh_ob("sw_stem", lathe("stem", [(0.0018, 0), (0.0018, 0.004)], n=16), chrome, loc=(0, R - 0.0005, zc),
+            rot=(math.radians(-90), 0, 0), parent=p, col=col)
+    knurl = lambda a, z: 1.0 + 0.06 * (math.cos(24 * a) > 0)
+    mesh_ob("sw_crown", lathe("crown", [(0, 0), (0.0036, 0), (0.0040, 0.0012), (0.0040, 0.0040), (0.0034, 0.0050), (0, 0.0052)],
+                              n=48, wobble=knurl), chrome, loc=(0, R + 0.0030, zc), rot=(math.radians(-90), 0, 0), parent=p, col=col)
+    mesh_ob("sw_bow", torus("bow", 0.0075, 0.0011, 40, 10), chrome, loc=(0, R + 0.0120, 0.0011), parent=p, col=col)
+    for s in (-1, 1):
+        a = math.pi / 2 + s * math.radians(42)
+        mesh_ob("sw_push", lathe("push", [(0, 0), (0.0016, 0), (0.0016, 0.0028), (0.0022, 0.0030), (0.0022, 0.0042), (0, 0.0044)], n=20),
+                chrome, loc=(R * 0.97 * math.cos(a), R * 0.97 * math.sin(a), zc), rot=(math.radians(-90), 0, a - math.pi / 2),
+                parent=p, col=col)
+    return p
+
+
+# =====================================================================================
+# ironStomach: a paper-wrapped roll of antacid tablets, opened, with a few loose tablets
+# =====================================================================================
+def wrapper_mat():
+    key = "p_antacid_wrap"
+    if key in _M:
+        return _M[key]
+    m = bpy.data.materials.new(key)
+    m.use_nodes = True
+    nt = m.node_tree
+    b = nt.nodes["Principled BSDF"]
+    b.inputs["Roughness"].default_value = 0.55
+    b.inputs["Coat Weight"].default_value = 0.25
+    tc = nt.nodes.new("ShaderNodeTexCoord")
+    sep = nt.nodes.new("ShaderNodeSeparateXYZ")
+    nt.links.new(tc.outputs["Object"], sep.inputs[0])
+    # bands along the roll's axis (object Z): white, a mint band with a navy pinstripe, white
+    ramp = nt.nodes.new("ShaderNodeValToRGB")
+    ramp.color_ramp.interpolation = "CONSTANT"
+    els = ramp.color_ramp.elements
+    els[0].position, els[0].color = 0.0, lin("#f5f6f2")
+    els[1].position, els[1].color = 0.17, lin("#1f3a6b")
+    for pos, c in ((0.195, "#7fd1b9"), (0.805, "#1f3a6b"), (0.83, "#f5f6f2")):
+        e = els.new(pos)
+        e.color = lin(c)
+    mr = nt.nodes.new("ShaderNodeMapRange")
+    mr.inputs["From Min"].default_value = 0.0
+    mr.inputs["From Max"].default_value = 0.052
+    nt.links.new(sep.outputs[2], mr.inputs["Value"])
+    nt.links.new(mr.outputs[0], ramp.inputs[0])
+    nt.links.new(ramp.outputs[0], b.inputs["Base Color"])
+    _M[key] = m
+    return m
+
+
+def build_ironStomach(col=None, loc=(0, 0, 0), rot_z=0.0, scale=1.0):
+    """The roll lies along local X, its open (foil) end at +X, with three tablets beside it."""
+    p = empty("prop_ironStomach", loc, (0, 0, rot_z), col, scale)
+    r, L = 0.0095, 0.052
+    roll = empty("ant_roll", (-L / 2, 0, r), (0, math.radians(90), 0), col)
+    roll.parent = p
+    crimp = lambda a, z: 1.0 - (0.06 * (0.5 + 0.5 * math.cos(18 * a)) if z < 0.0025 else 0.0)
+    mesh_ob("ant_wrap", lathe("wrap", [(r * 0.55, 0.0), (r * 0.92, 0.0007), (r, 0.0025), (r, L - 0.0045), (r * 1.01, L - 0.004)],
+                              n=48, cap_top=False, wobble=crimp), wrapper_mat(), parent=roll, col=col)
+    # the torn-open end: crinkled foil collar and the top tablet showing
+    foil = pmat("foil", "#cfd5dd", 0.28, metal=1.0)
+    tear = lambda a, z: 1.0 + 0.05 * math.sin(7 * a) * (z > L - 0.0042)
+    mesh_ob("ant_foil", lathe("foil", [(r * 1.012, L - 0.0045), (r * 1.02, L - 0.0010), (r * 0.98, L + 0.0012)], n=48,
+                              cap_top=False, cap_bot=False, wobble=tear), foil, parent=roll, col=col)
+    chalk = [pmat("tab_white", "#f2efe6", 0.85), pmat("tab_pink", "#f1c9d2", 0.85), pmat("tab_mint", "#cdeedd", 0.85)]
+    tab = lambda nm, tr, th: lathe(nm, [(0, 0), (tr * 0.93, 0), (tr, th * 0.3), (tr, th * 0.7), (tr * 0.93, th), (0, th)], n=40)
+    tr, th = r * 0.92, 0.0042
+    mesh_ob("ant_top_tab", tab("tt", tr * 0.98, 0.001), chalk[1], loc=(0, 0, L - 0.0018), parent=roll, col=col)
+    # loose tablets: one flat, one leaning on another, one on its edge
+    poses = [((L / 2 + 0.014, -0.007, 0.0), (0, 0, 0), chalk[0]),
+             ((L / 2 + 0.010, 0.011, 0.0), (0, 0, 0), chalk[2]),
+             ((L / 2 + 0.0145, 0.0105, 0.0026), (math.radians(-28), math.radians(10), 0), chalk[1])]
+    for (x, y, z), rot, m in poses:
+        mesh_ob("ant_tab", tab("tab", tr, th), m, loc=(x, y, z), rot=rot, parent=p, col=col)
+        # a pressed groove across the top (score line)
+        mesh_ob("ant_score", rbox("score", tr * 1.6, 0.0007, 0.0004), pmat("tab_shadow", "#d9d4c6", 0.9),
+                loc=(x, y, z + th * math.cos(rot[0]) * 0.98), rot=rot, parent=p, col=col, smooth=False)
+    # a little printed name on the wrapper, facing the camera side (-Y)
+    ink = pmat("ant_ink", "#1f3a6b", 0.5)
+    a = math.radians(33)            # on the wrapper, turned up toward the camera
+    text_ob("ant_txt", "ANTACID", r * 0.56, ink, (-L / 2 + L * 0.50, -(r + 0.0002) * math.cos(a), r + (r + 0.0002) * math.sin(a)),
+            rot=(math.radians(90) - a, 0, 0), parent=p, col=col)
+    return p
+
+
+# =====================================================================================
+# biggerBook: a thick, closed leather order ledger
+# =====================================================================================
+def build_biggerBook(col=None, loc=(0, 0, 0), rot_z=0.0, scale=1.0, W=0.100, D=0.074, T=0.030):
+    """Lies flat with its rounded spine toward -Y (the camera); the cover title reads along +X."""
+    p = empty("prop_biggerBook", loc, (0, 0, rot_z), col, scale)
+    leather = pmat("ledger_leather", "#183224", 0.5, coat=0.15)
+    gold = pmat("gilt", "#d1a64a", 0.25, metal=1.0)
+    page = pmat("ledger_pages", "#efe6cf", 0.8)
+    c = 0.0035                      # cover board thickness
+    ov = 0.0028                     # cover overhang past the page block
+    sr = T / 2                      # spine radius (x-section a half-ellipse)
+    for z in (c / 2, T - c / 2):
+        mesh_ob("ledger_cover", rbox("cover", W, D - sr * 0.4, c, 0.0012), leather, loc=(0, sr * 0.2, z), parent=p, col=col)
+    # page block, inset on the three open sides
+    mesh_ob("ledger_pages", rbox("pages", W - 2 * ov, D - ov - sr * 0.4, T - 2 * c + 0.0004, 0.0), page,
+            loc=(0, sr * 0.2 - ov / 2, T / 2), parent=p, col=col, smooth=False)
+    lines = pmat("ledger_line", "#cbbf9f", 0.9)
+    for k in range(8):              # page-edge lines on the fore-edge (+Y) and the ends
+        z = c + (T - 2 * c) * (k + 0.5) / 8
+        mesh_ob("ledger_line", rbox("pl", W - 2 * ov - 0.001, 0.0002, 0.00016), lines,
+                loc=(0, D / 2 - ov - 0.0001 + 0.0002, z), parent=p, col=col, smooth=False)
+        for sx in (-1, 1):
+            mesh_ob("ledger_line", rbox("pl", 0.0002, D - ov - sr * 0.4 - 0.001, 0.00016), lines,
+                    loc=(sx * (W / 2 - ov + 0.0001), sr * 0.2 - ov / 2, z), parent=p, col=col, smooth=False)
+    # rounded spine along X at -Y: a half-cylinder squashed in depth
+    y0 = -D / 2 + sr * 0.4
+    sp = mesh_ob("ledger_spine", lathe("spine", [(sr, -W / 2), (sr + 0.0006, -W / 2 + 0.0015), (sr + 0.0006, W / 2 - 0.0015),
+                                                (sr, W / 2)], n=48), leather,
+                 loc=(0, y0, T / 2), rot=(0, math.radians(90), 0), scale=(1.0, 0.42, 1.0), parent=p, col=col)
+    for xx in (-W * 0.30, -W * 0.10, W * 0.10, W * 0.30):        # raised bands, gilt lines between them
+        mesh_ob("ledger_band", lathe("band", [(sr + 0.0006, -0.0016), (sr + 0.0016, -0.0008), (sr + 0.0016, 0.0008),
+                                              (sr + 0.0006, 0.0016)], n=48, cap_top=False, cap_bot=False), leather,
+                loc=(xx, y0, T / 2), rot=(0, math.radians(90), 0), scale=(1.0, 0.42, 1.0), parent=p, col=col)
+    for xx in (-W * 0.20, W * 0.20):
+        mesh_ob("ledger_gild", lathe("gild", [(sr + 0.0008, -0.0004), (sr + 0.0009, 0.0), (sr + 0.0008, 0.0004)], n=48,
+                                     cap_top=False, cap_bot=False), gold,
+                loc=(xx, y0, T / 2), rot=(0, math.radians(90), 0), scale=(1.0, 0.42, 1.0), parent=p, col=col)
+    # brass corner guards on the fore-edge corners, top and bottom cover
+    for sx in (-1, 1):
+        for z in (c / 2, T - c / 2):
+            mesh_ob("ledger_corner", rbox("corner", 0.011, 0.011, c + 0.0009, 0.0008), gold,
+                    loc=(sx * (W / 2 - 0.0045), D / 2 - 0.0045, z), rot=(0, 0, math.radians(45)), parent=p, col=col)
+    # gilt title panel on the cover: a thin frame and "ORDERS"
+    zt = T + 0.0001
+    fw, fd = W * 0.50, D * 0.30
+    cy_ = D * 0.04
+    for (sx_, sy_, lx, ly) in ((fw, 0.0007, 0, fd / 2), (fw, 0.0007, 0, -fd / 2), (0.0007, fd, fw / 2, 0), (0.0007, fd, -fw / 2, 0)):
+        mesh_ob("ledger_frame", rbox("fr", sx_, sy_, 0.0003), gold, loc=(lx, ly + cy_, zt), parent=p, col=col, smooth=False)
+    text_ob("ledger_title", "ORDERS", D * 0.10, gold, (0, cy_, zt + 0.0001), rot=(0, 0, 0), parent=p, col=col, spacing=1.2)
+    # a lilac ribbon marker escaping from the +X end and lying on the desk
+    yr = -D * 0.12
+    pts = [(W / 2 - 0.006, yr, T * 0.55), (W / 2 + 0.0015, yr, T * 0.5), (W / 2 + 0.006, yr - 0.001, T * 0.25),
+           (W / 2 + 0.0095, yr - 0.003, 0.0006), (W / 2 + 0.017, yr - 0.007, 0.0004)]
+    mesh_ob("ledger_ribbon", ribbon_strip("ribbon", pts, 0.0045), pmat("lilac", "#B48CE8", 0.55), parent=p, col=col)
+    return p
+
+
+def ribbon_strip(name, pts, width):
+    """A flat strip through 3D points, its width horizontal (along the side perpendicular to travel)."""
+    pts = [Vector(q) for q in pts]
+    bm = bmesh.new()
+    rows = []
+    for k, q in enumerate(pts):
+        t = (pts[min(k + 1, len(pts) - 1)] - pts[max(k - 1, 0)]).normalized()
+        side = t.cross(Vector((0, 0, 1)))
+        if side.length < 1e-4:
+            side = Vector((1, 0, 0))
+        side.normalize()
+        rows.append((bm.verts.new(q - side * width / 2), bm.verts.new(q + side * width / 2)))
+    for a, b in zip(rows, rows[1:]):
+        bm.faces.new((a[0], b[0], b[1], a[1]))
+    me = bpy.data.meshes.new(name)
+    bm.to_mesh(me)
+    bm.free()
+    return me
+
+
+# =====================================================================================
+# deepPockets: a silver money clip holding folded banknotes
+# =====================================================================================
+def bill_mat():
+    key = "p_bill"
+    if key in _M:
+        return _M[key]
+    m = bpy.data.materials.new(key)
+    m.use_nodes = True
+    nt = m.node_tree
+    b = nt.nodes["Principled BSDF"]
+    b.inputs["Roughness"].default_value = 0.8
+    tc = nt.nodes.new("ShaderNodeTexCoord")
+    sep = nt.nodes.new("ShaderNodeSeparateXYZ")
+    nt.links.new(tc.outputs["Object"], sep.inputs[0])
+    # engraved look: a border band and fine guilloche-like waves in the middle
+    ax = nt.nodes.new("ShaderNodeMath"); ax.operation = "ABSOLUTE"
+    ay = nt.nodes.new("ShaderNodeMath"); ay.operation = "ABSOLUTE"
+    nt.links.new(sep.outputs[0], ax.inputs[0]); nt.links.new(sep.outputs[1], ay.inputs[0])
+    bx = nt.nodes.new("ShaderNodeMath"); bx.operation = "GREATER_THAN"; bx.inputs[1].default_value = 0.0290
+    by = nt.nodes.new("ShaderNodeMath"); by.operation = "GREATER_THAN"; by.inputs[1].default_value = 0.0125
+    nt.links.new(ax.outputs[0], bx.inputs[0]); nt.links.new(ay.outputs[0], by.inputs[0])
+    border = nt.nodes.new("ShaderNodeMath"); border.operation = "MAXIMUM"
+    nt.links.new(bx.outputs[0], border.inputs[0]); nt.links.new(by.outputs[0], border.inputs[1])
+    wave = nt.nodes.new("ShaderNodeTexWave")
+    wave.inputs["Scale"].default_value = 260.0
+    wave.inputs["Distortion"].default_value = 6.0
+    nt.links.new(tc.outputs["Object"], wave.inputs["Vector"])
+    wv = nt.nodes.new("ShaderNodeMath"); wv.operation = "MULTIPLY"; wv.inputs[1].default_value = 0.35
+    nt.links.new(wave.outputs["Fac"], wv.inputs[0])
+    mx = nt.nodes.new("ShaderNodeMath"); mx.operation = "MAXIMUM"
+    nt.links.new(border.outputs[0], mx.inputs[0]); nt.links.new(wv.outputs[0], mx.inputs[1])
+    mix = nt.nodes.new("ShaderNodeMix"); mix.data_type = "RGBA"
+    mix.inputs["A"].default_value = lin("#dfe5d2")
+    mix.inputs["B"].default_value = lin("#5d8a68")
+    nt.links.new(mx.outputs[0], mix.inputs["Factor"])
+    nt.links.new(mix.outputs["Result"], b.inputs["Base Color"])
+    _M[key] = m
+    return m
+
+
+def build_deepPockets(col=None, loc=(0, 0, 0), rot_z=0.0, scale=1.0, n_bills=5):
+    """Banknotes folded in half (fold at -X), held by a flat silver clip; lies flat."""
+    p = empty("prop_deepPockets", loc, (0, 0, rot_z), col, scale)
+    L, Wd = 0.066, 0.030                   # folded size
+    rng = random.Random(5)
+    bill = bill_mat()
+    th = 0.00055
+    stack_h = n_bills * 2 * th
+    for k in range(n_bills * 2):
+        z = th / 2 + k * th
+        jitter = (rng.uniform(-0.003, 0.003), rng.uniform(-0.0015, 0.0015), rng.uniform(-0.06, 0.06))
+        mesh_ob("bill", rbox("bill", L - 0.001 * (k % 3), Wd, th * 0.9, 0.0002, seg=1), bill,
+                loc=(jitter[0], jitter[1], z + 0.0002 * math.sin(k)), rot=(0, 0, jitter[2]), parent=p, col=col)
+    # the folded edge: a rounded bundle at -X
+    mesh_ob("bill_fold", lathe("fold", [(stack_h / 2, -Wd / 2), (stack_h / 2 + 0.0002, Wd / 2)], n=24, cap_top=True, cap_bot=True),
+            bill, loc=(-L / 2, 0, stack_h / 2), rot=(math.radians(90), 0, 0), scale=(0.6, 1, 1), parent=p, col=col)
+    # the top note's portrait oval and value, on the part the clip leaves showing
+    ink = pmat("bill_ink", "#2f5a3c", 0.7)
+    zt = stack_h + 0.0003
+    mesh_ob("bill_oval", torus("oval", 0.0075, 0.00045, 40, 6), ink, loc=(0.015, 0, zt), scale=(1.0, 1.3, 0.4), parent=p, col=col)
+    mesh_ob("bill_portrait", lathe("por", [(0, 0), (0.0062, 0)], n=32, cap_top=False, cap_bot=False), pmat("bill_tint", "#9fb89a", 0.8),
+            loc=(0.015, 0, zt - 0.0001), scale=(1.0, 1.3, 1.0), parent=p, col=col)
+    for sy in (-1, 1):
+        text_ob("bill_val", "100", 0.0042, ink, (0.0265, sy * 0.0105, zt), rot=(0, 0, 0), parent=p, col=col)
+    # the clip: a 2 mm-thick strip over the top, around the fold, under the bottom
+    silver = pmat("clip_silver", "#c9ced6", 0.14, metal=1.0)
+    cw = 0.016
+    lt, lb = 0.040, 0.034
+    pts = []
+    for i in range(14):
+        t = i / 13
+        pts.append((-L / 2 + 0.002 + lt * (1 - t), 0, stack_h + 0.0009 - 0.0004 * math.sin(t * math.pi)))
+    for i in range(1, 12):
+        a = math.pi / 2 + math.pi * i / 12
+        rr = stack_h / 2 + 0.0009
+        pts.append((-L / 2 + 0.002 + rr * 0.9 * math.cos(a), 0, stack_h / 2 + rr * math.sin(a)))
+    for i in range(14):
+        t = i / 13
+        pts.append((-L / 2 + 0.002 + lb * t, 0, -0.0001 + 0.0002 * t))
+    # a strip through the XZ path, width along Y
+    bm = bmesh.new()
+    rows = []
+    for k, (x, y, z) in enumerate(pts):
+        a = Vector(pts[max(k - 1, 0)]); b_ = Vector(pts[min(k + 1, len(pts) - 1)])
+        tt = (b_ - a).normalized()
+        nrm = Vector((-tt.z, 0, tt.x))
+        q = Vector((x, y, z))
+        rows.append([bm.verts.new(q + Vector((0, s * cw / 2, 0)) + nrm * d) for (s, d) in
+                     ((-1, -0.0006), (1, -0.0006), (1, 0.0006), (-1, 0.0006))])
+    for a, b_ in zip(rows, rows[1:]):
+        for i in range(4):
+            j = (i + 1) % 4
+            bm.faces.new((a[i], a[j], b_[j], b_[i]))
+    bm.faces.new(rows[0][::-1])
+    bm.faces.new(rows[-1])
+    me = bpy.data.meshes.new("clip")
+    bm.to_mesh(me)
+    bm.free()
+    ob = mesh_ob("clip", me, silver, parent=p, col=col)
+    bv = ob.modifiers.new("bevel", "BEVEL")
+    bv.width = 0.00035
+    bv.segments = 2
+    return p
+
+
+# =====================================================================================
+# leverageLoan: a slip stamped LOAN in red, locked with a tiny brass padlock
+# =====================================================================================
+def slip_mat():
+    key = "p_slip"
+    if key in _M:
+        return _M[key]
+    m = bpy.data.materials.new(key)
+    m.use_nodes = True
+    nt = m.node_tree
+    b = nt.nodes["Principled BSDF"]
+    b.inputs["Roughness"].default_value = 0.8
+    tc = nt.nodes.new("ShaderNodeTexCoord")
+    sep = nt.nodes.new("ShaderNodeSeparateXYZ")
+    nt.links.new(tc.outputs["Object"], sep.inputs[0])
+    # aged paper: a grimy noise, darker toward the edges, and fine print lines
+    nz = nt.nodes.new("ShaderNodeTexNoise")
+    nz.inputs["Scale"].default_value = 90.0
+    nz.inputs["Detail"].default_value = 6.0
+    nt.links.new(tc.outputs["Object"], nz.inputs["Vector"])
+    ramp = nt.nodes.new("ShaderNodeValToRGB")
+    ramp.color_ramp.elements[0].position = 0.35
+    ramp.color_ramp.elements[0].color = lin("#9c8f72")
+    ramp.color_ramp.elements[1].position = 0.7
+    ramp.color_ramp.elements[1].color = lin("#d8ccae")
+    nt.links.new(nz.outputs["Fac"], ramp.inputs[0])
+    _M[key] = m
+    nt.links.new(ramp.outputs[0], b.inputs["Base Color"])
+    return m
+
+
+def build_leverageLoan(col=None, loc=(0, 0, 0), rot_z=0.0, scale=1.0, W=0.072, D=0.044):
+    p = empty("prop_leverageLoan", loc, (0, 0, rot_z), col, scale)
+    # the slip: thin, a little curled at the corners
+    nx, ny = 20, 12
+    bm = bmesh.new()
+    grid = []
+    for i in range(nx + 1):
+        row = []
+        for j in range(ny + 1):
+            x, y = (i / nx - 0.5) * W, (j / ny - 0.5) * D
+            cx, cy = abs(x) / (W / 2), abs(y) / (D / 2)
+            z = 0.0003 + 0.0022 * max(0.0, cx - 0.7) ** 2 / 0.09 * (0.6 + 0.4 * cy) + 0.0006 * max(0.0, cy - 0.6) ** 2 / 0.16
+            row.append(bm.verts.new((x, y, z)))
+        grid.append(row)
+    for i in range(nx):
+        for j in range(ny):
+            bm.faces.new((grid[i][j], grid[i + 1][j], grid[i + 1][j + 1], grid[i][j + 1]))
+    me = bpy.data.meshes.new("slip")
+    bm.to_mesh(me)
+    bm.free()
+    sl = mesh_ob("loan_slip", me, slip_mat(), parent=p, col=col)
+    so = sl.modifiers.new("solid", "SOLIDIFY")
+    so.thickness = 0.0004
+    so.offset = -1
+    ink = pmat("loan_ink", "#1a1c24", 0.6)
+    zt = 0.00045
+    # black rule border and fine print
+    for (sx_, sy_, lx, ly) in ((W * 0.9, 0.0008, 0, D * 0.42), (W * 0.9, 0.0008, 0, -D * 0.42),
+                               (0.0008, D * 0.84, W * 0.45, 0), (0.0008, D * 0.84, -W * 0.45, 0)):
+        mesh_ob("loan_rule", rbox("rule", sx_, sy_, 0.0001), ink, loc=(lx, ly, zt), parent=p, col=col, smooth=False)
+    for k in range(4):
+        mesh_ob("loan_print", rbox("print", W * (0.55 if k % 2 else 0.7), 0.0006, 0.0001), pmat("loan_grey", "#5b5a58", 0.7),
+                loc=(-W * 0.06, -D * 0.30 + k * 0.0026, zt), parent=p, col=col, smooth=False)
+    text_ob("loan_hdr", "PROMISSORY NOTE", D * 0.075, ink, (0, D * 0.32, zt), rot=(0, 0, 0), parent=p, col=col, spacing=1.1)
+    # the red stamp: LOAN in a box, at an angle, slightly uneven
+    stamp = pmat("stamp_red", "#8c0d14", 0.55)
+    st = empty("loan_stamp", (-W * 0.05, D * 0.02, zt + 0.0001), (0, 0, math.radians(-9)), col)
+    st.parent = p
+    text_ob("loan_txt", "LOAN", D * 0.34, stamp, (0, 0, 0), rot=(0, 0, 0), parent=st, col=col, spacing=1.1)
+    bw, bh = W * 0.60, D * 0.42
+    for (sx_, sy_, lx, ly) in ((bw, 0.0012, 0, bh / 2), (bw, 0.0012, 0, -bh / 2), (0.0012, bh, bw / 2, 0), (0.0012, bh, -bw / 2, 0)):
+        mesh_ob("loan_box", rbox("sb", sx_, sy_, 0.0001), stamp, loc=(lx, ly, 0), parent=st, col=col, smooth=False)
+    # grommet hole at the right end, with the padlock's shackle through it, the lock lying on the slip
+    brass = pmat("brass", "#d1a64a", 0.2, metal=1.0)
+    steel = pmat("lock_steel", "#9aa3b3", 0.22, metal=1.0)
+    gx, gy = W * 0.36, -D * 0.05
+    mesh_ob("loan_grommet", torus("grom", 0.0028, 0.0007, 24, 8), brass, loc=(gx, gy, zt + 0.0003), parent=p, col=col)
+    mesh_ob("loan_hole", lathe("hole", [(0, 0), (0.0021, 0)], n=24, cap_top=False, cap_bot=False), pmat("hole_dark", "#0b0c10", 0.9),
+            loc=(gx, gy, zt + 0.0002), parent=p, col=col)
+    lk = empty("loan_lock", (gx + 0.0105, gy - 0.004, 0.0), (0, 0, math.radians(-20)), col)
+    lk.parent = p
+    bwid, bdep, bth = 0.0135, 0.0105, 0.0055
+    mesh_ob("lock_body", rbox("lb", bdep, bwid, bth, 0.0012), brass, loc=(0, 0, 0.0006 + bth / 2), parent=lk, col=col)
+    mesh_ob("lock_key", lathe("kh", [(0, 0), (0.0011, 0), (0.0011, 0.0003), (0, 0.0003)], n=16), pmat("hole_dark", "#0b0c10", 0.9),
+            loc=(0.0015, 0, 0.0006 + bth + 0.00005), parent=lk, col=col)
+    mesh_ob("lock_slot", rbox("ks", 0.0026, 0.0007, 0.0003), pmat("hole_dark", "#0b0c10", 0.9),
+            loc=(0.0028, 0, 0.0006 + bth + 0.00005), parent=lk, col=col, smooth=False)
+    # shackle: a U lying flat, from the body's -X face through the grommet and back
+    pts = []
+    zc = 0.0006 + bth / 2
+    for i in range(21):
+        a = math.pi * i / 20
+        pts.append((-bdep / 2 - 0.0058 * math.sin(a) - (0.0 if 0 < i < 20 else 0), 0.0042 * math.cos(a), zc + 0.0006 * math.sin(a)))
+    pts = [(-bdep / 2 + 0.002, 0.0042, zc)] + pts + [(-bdep / 2 + 0.002, -0.0042, zc)]
+    mesh_ob("lock_shackle", tube("shackle", pts, [0.00105] * len(pts), n=12), steel, parent=lk, col=col)
+    return p
+
+
 BUILDERS = {
+    "insurance": build_insurance,
+    "bellClerk": build_bellClerk,
+    "ironStomach": build_ironStomach,
+    "biggerBook": build_biggerBook,
+    "deepPockets": build_deepPockets,
+    "leverageLoan": build_leverageLoan,
     "rewind": build_rewind,
     "hotHand": build_hotHand,
     "stopDiscipline": build_stopDiscipline,

@@ -706,3 +706,36 @@ button:focus-visible { outline: 0.5cqw solid var(--lilac); outline-offset: 0.3cq
   .pointer { transition: opacity 200ms ease; }
   .desk-mouse .hand { transition: none; }
 }
+
+/* Day type line on the day-open card */
+.daytype b { color: var(--lilac); }
+
+/* Cursed edge tag (cards are off the monitors) */
+.perk .tag.cursed { border-color: var(--down); color: var(--down); }
+
+/* Achievements list */
+.perk.ach { opacity: 0.6; }
+.perk.ach.got { opacity: 1; }
+.perk.ach.got h3 { color: var(--lilac); }
+
+/* End-of-day review bar, over the desk monitor */
+.review-bar {
+  position: absolute;
+  left: var(--bot-l); right: calc(100% - var(--bot-r));
+  top: var(--bot-t); bottom: calc(100% - var(--bot-b));
+  z-index: 12;
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3cqw;
+  padding: 3cqw;
+  background: var(--screen-bg);
+  color: var(--ivory);
+  font-size: 3.2cqw;
+  text-align: center;
+}
+.review-bar p { margin: 0; color: var(--dim); }
+.review-bar .up { color: var(--up); }
+.review-bar .down { color: var(--down); }
+.review-back {
+  font: inherit; font-weight: 700; font-size: 3.6cqw;
+  padding: 2.4cqw 5cqw; border-radius: 2cqw;
+  background: transparent; color: var(--ivory); border: 1px solid var(--lilac); cursor: pointer;
+}

@@ -48,10 +48,10 @@ test('edges and mandates change the rules', () => {
   assert.equal(effectiveRules([], TIER1, { hot: true }).buyingPowerMultiplier, 4);
   assert.equal(effectiveRules([], TIER2, { hot: true }).maxContracts, 7);
   const o = effectiveRules([], TIER3, { hot: true, edges: ['thetaShield'] });
-  assert.equal(o.option.premiumBudget, 2400);
+  assert.equal(o.option.premiumBudget, TIER3.option.premiumBudget * 1.2);
   assert.equal(o.maxContracts, 48);
   assert.equal(o.option.ivScale, 0.85);
-  assert.equal(TIER3.option.premiumBudget, 2000, 'tier config is never mutated');
+  assert.equal(TIER3.option.premiumBudget, 3500, 'tier config is never mutated');
   assert.equal(effectiveRules([], TIER1, { edges: ['thetaShield'] }).option, undefined);
   const m = effectiveRules([], TIER1, { mandates: ['maxOnly', 'noFlatten', 'blindNews'] });
   assert.deepEqual(m.sizes.map((s) => s.label), ['MAX']);

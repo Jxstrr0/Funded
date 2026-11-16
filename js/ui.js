@@ -398,6 +398,16 @@ function setBehindCard(on) {
   for (const n of [...el.screens, el.coach]) n.inert = on;
 }
 
+/** End-of-day review: a bar over the desk monitor with a way back to the results card. */
+export function showReview(onBack) {
+  const bar = document.getElementById('reviewBar');
+  const btn = document.getElementById('reviewBack');
+  bar.hidden = false;
+  btn.onclick = () => { bar.hidden = true; btn.onclick = null; onBack(); };
+  btn.focus({ preventScroll: true });
+  announce('Review. Your trades are marked on the chart.');
+}
+
 export function rows(list) {
   return `<ul class="rules">${list.map(([k, v, cls = '']) => `<li><span>${esc(k)}</span><b class="${cls}">${esc(v)}</b></li>`).join('')}</ul>`;
 }

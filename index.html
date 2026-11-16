@@ -44,6 +44,7 @@
   <link rel="modulepreload" href="js/save.js">
   <link rel="modulepreload" href="js/tutorial.js">
   <link rel="modulepreload" href="js/options.js">
+  <link rel="modulepreload" href="js/daily.js">
 </head>
 <body>
   <main class="frame" id="frame">
@@ -101,6 +102,12 @@
         <button class="act flat" id="flatBtn">FLATTEN</button>
       </div>
     </section>
+
+    <!-- End-of-day review: over the desk monitor while the chart shows the trades -->
+    <div class="review-bar" id="reviewBar" hidden>
+      <p>Review: <span class="up">▲</span> buy or call · <span class="down">▼</span> sell or put · ◆ close. Each closed trade shows its P&amp;L.</p>
+      <button class="review-back" id="reviewBack">Back to results</button>
+    </div>
 
     <!-- Touch screens: the pointer that clicks what you tap (js/clicker.js) -->
     <div class="pointer" id="pointer" aria-hidden="true"></div>

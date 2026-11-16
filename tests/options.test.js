@@ -5,7 +5,7 @@ import { generateDay, hashSeed } from '../js/engine.js';
 import { newRun, newDay, optionOrder, applyFill, snapshot } from '../js/rules.js';
 import { TIER1, TIER2, TIER3, TIERS } from '../js/config.js';
 
-const day3 = (s = 7) => generateDay({ seed: hashSeed(s, 1), rules: TIER3, dayStartBalance: TIER3.startBalance });
+const day3 = (s = 7) => generateDay({ seed: hashSeed(s, 1), rules: TIER3, dayStartBalance: TIER3.startBalance, dayType: null });
 
 test('Black-Scholes: put-call parity and intrinsic value at expiry', () => {
   const p = bs(100, 95, 0.01, 0.4);
@@ -56,12 +56,12 @@ test('option orders: sizes buy a share of the premium budget, capped by budget a
   const day = newDay(run, TIER3);
   assert.equal(day.mult, 100);
   const size = (i) => TIER3.sizes[i];
-  assert.equal(optionOrder(day, size(0), 1.25, TIER3), 4);    // $500 / $125
-  assert.equal(optionOrder(day, size(2), 1.25, TIER3), 16);   // $2,000 / $125
+  assert.equal(optionOrder(day, size(0), 1.25, TIER3), 7);    // $875 / $125
+  assert.equal(optionOrder(day, size(2), 1.25, TIER3), 28);   // $3,500 / $125
   assert.equal(optionOrder(day, size(2), 0.05, TIER3), 40);   // contract cap
   assert.equal(optionOrder(day, size(0), 25, TIER3), 0);      // one contract costs more than the budget
   day.qty = 12; day.avg = 1.25; day.right = 'C';
-  assert.equal(optionOrder(day, size(2), 1.25, TIER3), 4);    // only the budget left
+  assert.equal(optionOrder(day, size(2), 1.25, TIER3), 16);   // only the budget left ($2,000)
 });
 
 test('option P&L: marked at premium, loss limited to what was paid', () => {

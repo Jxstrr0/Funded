@@ -35,7 +35,7 @@ export const TIER2 = {
   short: '$50k futures',
   startBalance: 50000,
   profitTarget: 3000,
-  dailyLossLimit: 1500,
+  dailyLossLimit: 1800,        // was 1,500; raised in 0.10 so the middle rung isn't the hardest
   trailingDrawdown: 3000,
   floorLocksAt: 50000,
   minTradingDays: 3,
@@ -72,7 +72,7 @@ export const TIER3 = {
   name: 'Tier 3 · $100k Options Eval',
   short: '$100k options',
   startBalance: 100000,
-  profitTarget: 5000,          // was 6,000; lowered with the stronger news (0.9.0.4) so careful play can pass
+  profitTarget: 7500,          // 6,000, then 5,000 (0.9.0.4), now 7,500 with the bigger premium budget (0.10)
   dailyLossLimit: 3000,
   trailingDrawdown: 6000,
   floorLocksAt: 100000,
@@ -81,7 +81,7 @@ export const TIER3 = {
   option: {
     multiplier: 100,           // shares per contract: $ per 1.00 of premium
     strikeStep: 1,             // strike = the open, rounded to this
-    premiumBudget: 2000,       // most premium one position may cost (MAX size)
+    premiumBudget: 3500,       // most premium one position may cost (MAX size); above the daily limit, so MAX can get you fired (was 2,000)
     ivMin: 0.35,               // the day's base implied volatility (annual), seeded in this range
     ivMax: 0.5,
     ivEarningsPump: 2.6,       // IV multiplier just before the earnings release
@@ -117,7 +117,7 @@ export const TIERS = { tier1: TIER1, tier2: TIER2, tier3: TIER3 };
 // It shows small on the title screen, and when it changes on main,
 // .github/workflows/publish-release.yml publishes a GitHub Release, which is
 // where longlight.games reads this game's version and "what's new" line.
-export const VERSION = '0.9.0.4';
+export const VERSION = '0.10.0.0';
 
 // Studio links and shared art.
 export const STUDIO = {
@@ -193,7 +193,13 @@ export const EDGE_PROPS = {
       riskFriend: { l: 34.91, t: 85.83, w: 20.83, h: 5.94 },
       whisper: { l: 51.76, t: 85.62, w: 17.96, h: 6.04 },
       rainmaker: { l: 73.15, t: 84.32, w: 15.83, h: 6.3 },
-      hotHand: { l: 79.35, t: 90.36, w: 11.02, h: 6.67 },
+      insurance: { l: 24.07, t: 86.15, w: 13.24, h: 1.82 },
+      bellClerk: { l: 33.43, t: 82.97, w: 8.33, h: 2.24 },
+      ironStomach: { l: 66.76, t: 86.2, w: 8.89, h: 3.65 },
+      biggerBook: { l: 71.76, t: 79.38, w: 17.78, h: 5.05 },
+      deepPockets: { l: 78.43, t: 96.51, w: 19.63, h: 2.5 },
+      leverageLoan: { l: 14.91, t: 83.33, w: 10.93, h: 1.67 },
+      hotHand: { l: 77.41, t: 90.73, w: 16.2, h: 5.42 },
     },
     tier2: {
       stopDiscipline: { l: 24.07, t: 78.91, w: 9.63, h: 5.73 },
@@ -205,7 +211,13 @@ export const EDGE_PROPS = {
       riskFriend: { l: 35.65, t: 85.83, w: 19.26, h: 5.26 },
       whisper: { l: 51.2, t: 85.62, w: 18.8, h: 6.04 },
       rainmaker: { l: 72.31, t: 84.32, w: 16.94, h: 6.2 },
-      hotHand: { l: 79.35, t: 90.36, w: 11.3, h: 6.46 },
+      insurance: { l: 24.07, t: 86.15, w: 13.24, h: 1.82 },
+      bellClerk: { l: 33.52, t: 82.97, w: 8.15, h: 2.29 },
+      ironStomach: { l: 66.48, t: 86.2, w: 9.17, h: 3.65 },
+      biggerBook: { l: 71.57, t: 79.38, w: 17.87, h: 5.47 },
+      deepPockets: { l: 77.31, t: 95.57, w: 20.37, h: 3.44 },
+      leverageLoan: { l: 14.72, t: 83.33, w: 11.02, h: 1.67 },
+      hotHand: { l: 77.41, t: 90.73, w: 16.57, h: 5.31 },
     },
     tier3: {
       stopDiscipline: { l: 24.17, t: 78.85, w: 9.54, h: 5.89 },
@@ -217,7 +229,13 @@ export const EDGE_PROPS = {
       riskFriend: { l: 32.69, t: 84.9, w: 22.13, h: 6.25 },
       whisper: { l: 51.2, t: 85.36, w: 18.15, h: 6.3 },
       rainmaker: { l: 72.59, t: 84.32, w: 17.41, h: 8.18 },
-      hotHand: { l: 79.35, t: 90.36, w: 11.3, h: 6.93 },
+      insurance: { l: 23.98, t: 85.31, w: 13.33, h: 2.66 },
+      bellClerk: { l: 33.06, t: 82.92, w: 8.8, h: 2.92 },
+      ironStomach: { l: 66.3, t: 85.94, w: 10.19, h: 4.79 },
+      biggerBook: { l: 72.22, t: 79.38, w: 17.87, h: 5.83 },
+      deepPockets: { l: 78.43, t: 96.51, w: 19.54, h: 3.49 },
+      leverageLoan: { l: 14.91, t: 83.33, w: 10.74, h: 1.98 },
+      hotHand: { l: 77.5, t: 90.73, w: 16.11, h: 5.83 },
     },
   },
 };
@@ -262,7 +280,7 @@ export const ENGINE = {
   uCurveEdge: 1.6,           // volatility multiplier at open and close
   // Bump when day generation changes: a saved day in progress from an older version restarts
   // from its open (the same seed would now give a different tape).
-  version: 3,
+  version: 4,
   news: {
     min: 2,                  // headlines a day (was 1–3; raised so careful play can reach the target)
     max: 4,
@@ -335,7 +353,16 @@ export const EDGES = [
   { id: 'whisper', name: 'Whisper', weight: 1, desc: "The day-open card tells you which way the day's first headline goes." },
   { id: 'rainmaker', name: 'Rainmaker', weight: 2, desc: 'Rep earned this career x1.25.', repBonus: 0.25 },
   { id: 'thetaShield', name: 'Theta Shield', weight: 2, tiers: ['tier3'], desc: 'Options are priced 15% cheaper (lower implied volatility).', ivScale: 0.85 },
+  // Added in 0.10. `unlock` names the achievement (ACHIEVEMENTS) that puts an edge in the draw.
+  { id: 'insurance', name: 'Insurance', weight: 2, unlock: 'dailyFive', desc: "After a red day, the firm refunds 25% of the day's loss at the close.", refund: 0.25 },
+  { id: 'bellClerk', name: 'Bell Clerk', weight: 1, unlock: 'tier2Pass', desc: 'At the bell, an open position is closed for you instead of getting you fired.' },
+  { id: 'ironStomach', name: 'Iron Stomach', weight: 3, desc: 'Trailing drawdown 25% deeper.', drawdownBoost: 0.25 },
+  { id: 'biggerBook', name: 'Bigger Book', weight: 2, tiers: ['tier2'], desc: 'Futures: max position +2 contracts.', extraContracts: 2 },
+  { id: 'deepPockets', name: 'Deep Pockets', weight: 2, tiers: ['tier3'], desc: 'Options: premium budget +25%.', budgetBoost: 0.25 },
+  { id: 'leverageLoan', name: 'Leverage Loan', weight: 2, cursed: true, unlock: 'funded', desc: 'Cursed. Every size is 40% bigger, but your daily loss limit is 15% smaller.', sizeBoost: 0.4, lossCut: 0.15 },
 ];
+// Edges left out of the Daily Challenge draw (they do nothing in a single day).
+export const DAILY_SKIP_EDGES = ['rainmaker', 'shortWeek', 'hotHand', 'ironStomach'];
 
 // Mandates: optional handicaps chosen before a career, for more Rep.
 // repBonus values add up: two mandates worth +20% and +30% pay x1.5.
@@ -344,6 +371,69 @@ export const MANDATES = [
   { id: 'tightLeash', name: 'Tight Leash', repBonus: 0.30, desc: 'Daily loss limit -25%.', lossCut: 0.25 },
   { id: 'blindNews', name: 'Blind News', repBonus: 0.25, desc: 'News times are hidden: no markers on the chart, no times at the open.' },
   { id: 'maxOnly', name: 'Max Only', repBonus: 0.15, desc: 'Every order is MAX size.' },
+];
+
+// Day types (0.10): about 1 day in 4 is a special day, seeded like the weather
+// and named on the day-open card. Same career and day, same type. The tutorial
+// never gets one.
+export const DAY_TYPES = {
+  chance: 0.25,
+  types: {
+    // The stock gapped overnight. The first hour runs hard, usually with the gap.
+    gap: { weight: 1, name: 'Gap open', gapPct: [0.015, 0.04], followChance: 0.6, candles: 12, drift: 2.5, vol: 1.3 },
+    // Quiet until one huge release at 14:00 (options: the earnings release).
+    fed: { weight: 1, name: 'Fed day', candle: 54, quietVol: 0.7, jumpShareOfCap: 1, followCandles: [5, 8], follow: [0.9, 1.4], optionsJump: [0.03, 0.045] },
+    // One direction all day; the news is smaller.
+    trend: { weight: 1, name: 'Trend day', drift: 2, newsScale: 0.6, news: { min: 1, max: 2 } },
+    // One headline halts trading for 3 candles (15 minutes). It reopens with a
+    // second jump; the two together stay inside the usual shock cap.
+    halt: { weight: 1, name: 'Trading halt', candles: 3, firstShare: 0.55, reopenShare: [0.3, 0.45], reopenWithChance: 0.65, lastCandle: 60 },
+  },
+};
+
+export const FED_HEADLINES = {
+  up: ['Fed: surprise rate cut', 'Fed signals cuts ahead', 'Fed: "inflation is beaten"'],
+  down: ['Fed: surprise rate hike', 'Fed signals more hikes', 'Fed: "higher for longer"'],
+};
+export const HALT_HEADLINES = { up: 'Trading resumes: buyers waiting', down: 'Trading resumes: sellers waiting' };
+
+// Daily Challenge (0.10): everyone with the same date plays the same seeded
+// day. The tier rotates by date, with fixed edges. The first try is scored;
+// replays are practice.
+export const DAILY = {
+  epoch: '2026-11-16',           // Daily #1
+  tiers: ['tier1', 'tier2', 'tier3'], // rotation, by challenge number
+  edges: 2,                      // fixed edges, seeded from the date
+  parShare: 1 / 3,               // par for the day: this share of the tier's eval target (the TGT meter)
+  rep: { played: 15, perDollars: 50 }, // Rep for the scored try: flat, plus 1 per $ of green P&L
+  url: 'funded.longlight.games',
+  keep: 120,                     // scored days kept in the save
+};
+
+// Funded phase (0.10): passing Tier 3 keeps the career going on the $100k
+// options account with no target. Every 5 days the week's profit is split and
+// paid out (Rep, banked straight away), and the account resets.
+export const FUNDED = {
+  weekDays: 5,
+  split: 0.8,                    // your share of a green week
+  bonusAt: 5000,                 // a week this green pays...
+  bonusSplit: 0.9,               // ...this share instead (the TGT meter tracks it)
+  repPerDollars: 100,            // 1 Rep per $ paid out
+};
+
+// Achievements (0.10). `unlocks` names an edge (EDGES `unlock`) that joins the draw.
+export const ACHIEVEMENTS = [
+  { id: 'firstPass', name: 'Funded', desc: 'Pass Tier 1.' },
+  { id: 'tier2Pass', name: 'Contract Player', desc: 'Pass Tier 2.', unlocks: 'bellClerk' },
+  { id: 'funded', name: 'Window Seat', desc: 'Pass Tier 3 and go funded.', unlocks: 'leverageLoan' },
+  { id: 'firstPayout', name: 'Payday', desc: 'Take a payout.' },
+  { id: 'bigPayout', name: 'Six Figures', desc: 'Get $100,000 paid out in one career.' },
+  { id: 'dailyFive', name: 'Regular', desc: 'Play 5 Daily Challenges.', unlocks: 'insurance' },
+  { id: 'dailyStreak', name: 'Habit', desc: 'Play the Daily Challenge 7 days in a row.' },
+  { id: 'flawless', name: 'Flawless', desc: 'Pass an eval with every day green.' },
+  { id: 'fedDay', name: 'Fed Whisperer', desc: 'Close a Fed day green.' },
+  { id: 'haltDay', name: 'Circuit Breaker', desc: 'Close a trading-halt day green.' },
+  { id: 'mandated', name: 'Masochist', desc: 'Pass an eval with 3 or more mandates.' },
 ];
 
 // How the morning reads on the day-open card (Pre-market perk).

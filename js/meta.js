@@ -1,11 +1,12 @@
 // Meta progress across runs: Reputation, perks, tutorial flag. Pure maths plus
 // a guarded localStorage load/save.
-import { PERKS, REPUTATION } from './config.js';
+import { PERKS, REPUTATION, ACHIEVEMENTS } from './config.js';
 
 const KEY = 'funded.meta.v1';
 
 export function defaultMeta() {
-  return { rep: 0, owned: [], tutorialDone: false, runs: 0, passes: 0, mandates: [], stats: defaultStats() };
+  // ach: achievement id -> date earned. daily: date -> scored Daily Challenge result. seen: tier explainers shown.
+  return { rep: 0, owned: [], tutorialDone: false, runs: 0, passes: 0, mandates: [], stats: defaultStats(), ach: {}, daily: {}, seen: {} };
 }
 
 // ---------- career stats (the title's Career stats card) ----------
@@ -25,6 +26,10 @@ export function defaultStats() {
     topTier: null,                   // highest tier reached
     repEarned: 0,
     edgePicks: {},                   // edge id -> times taken
+    payouts: 0,                      // funded weeks paid out
+    paidTotal: 0,                    // $ paid out, all careers
+    bestPaid: 0,                     // most $ paid out in one career
+    bestDaily: null,                 // { pnl, n, tier }: best scored Daily Challenge
     partial: false,                  // true when play before stats existed isn't in here
   };
 }
@@ -64,6 +69,59 @@ export function recordCareer(stats, days) {
   return { ...stats, careers: stats.careers + 1, longestCareer: Math.max(stats.longestCareer, days) };
 }
 
+/** A funded week paid out `paid`; the career has now been paid `careerPaid` in all. */
+export function recordPayout(stats, paid, careerPaid) {
+  return { ...stats, payouts: stats.payouts + (paid > 0 ? 1 : 0), paidTotal: stats.paidTotal + paid, bestPaid: Math.max(stats.bestPaid, careerPaid) };
+}
+
+/** A scored Daily Challenge. */
+export function recordDaily(stats, r) {
+  const best = !stats.bestDaily || r.pnl > stats.bestDaily.pnl ? { pnl: r.pnl, n: r.n, tier: r.tier } : stats.bestDaily;
+  return { ...stats, bestDaily: best };
+}
+
+// ---------- achievements ----------
+
+/**
+ * Which achievements an event earns (ids not yet held). Events:
+ *  { kind: 'pass', tier, history, mandates }   an eval passed
+ *  { kind: 'day', type, pnl }                  a day closed at the bell
+ *  { kind: 'payout', paid, careerPaid }        a funded week closed
+ *  { kind: 'daily', played, streak }           a Daily Challenge scored (played = count)
+ */
+export function achievementsFor(meta, ev) {
+  const out = [];
+  if (ev.kind === 'pass') {
+    if (ev.tier === 'tier1') out.push('firstPass');
+    if (ev.tier === 'tier2') out.push('tier2Pass');
+    if (ev.tier === 'tier3') out.push('funded');
+    if (ev.history?.length && ev.history.every((d) => d.pnl > 0)) out.push('flawless');
+    if ((ev.mandates || []).length >= 3) out.push('mandated');
+  }
+  if (ev.kind === 'day' && ev.pnl > 0) {
+    if (ev.type === 'fed') out.push('fedDay');
+    if (ev.type === 'halt') out.push('haltDay');
+  }
+  if (ev.kind === 'payout') {
+    if (ev.paid > 0) out.push('firstPayout');
+    if (ev.careerPaid >= 100000) out.push('bigPayout');
+  }
+  if (ev.kind === 'daily') {
+    if (ev.played >= 5) out.push('dailyFive');
+    if (ev.streak >= 7) out.push('dailyStreak');
+  }
+  const have = meta.ach || {};
+  return out.filter((id) => !have[id] && ACHIEVEMENTS.some((a) => a.id === id));
+}
+
+/** Mark achievements earned on `date`. */
+export function grantAchievements(meta, ids, date) {
+  if (!ids.length) return meta;
+  const ach = { ...(meta.ach || {}) };
+  for (const id of ids) ach[id] = date;
+  return { ...meta, ach };
+}
+
 /** The most-taken edge: { id, n }, or null. Ties go to the edge taken first. */
 export function favouriteEdge(stats) {
   let top = null;
@@ -74,7 +132,9 @@ export function favouriteEdge(stats) {
 export function loadMeta() {
   try {
     const m = JSON.parse(localStorage.getItem(KEY) || 'null');
-    return m && typeof m.rep === 'number' ? { ...defaultMeta(), ...m, stats: statsOf(m) } : defaultMeta();
+    if (!m || typeof m.rep !== 'number') return defaultMeta();
+    const obj = (x) => (x && typeof x === 'object' && !Array.isArray(x) ? x : {});
+    return { ...defaultMeta(), ...m, stats: statsOf(m), ach: obj(m.ach), daily: obj(m.daily), seen: obj(m.seen) };
   } catch {
     return defaultMeta();
   }

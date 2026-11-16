@@ -1,7 +1,7 @@
 // Shared bot for tools/balance.mjs and tools/levers.mjs: a news-trading bot that
 // plays whole evals. It measures relative strength only (a person plays differently).
 const R = new URL('../js/', import.meta.url).href;
-const { generateDay, hashSeed } = await import(R + 'engine.js');
+const { generateDay, hashSeed, haltAt } = await import(R + 'engine.js');
 const { newRun, newDay, applyFill, orderDelta, optionOrder, snapshot, closeDay, effectiveRules, openPnl } = await import(R + 'rules.js');
 const { quoteAt } = await import(R + 'options.js');
 const { careerOf, repMultiplier } = await import(R + 'edges.js');
@@ -44,6 +44,8 @@ function playDay(run, tier, opts, rng) {
   for (let i = 0; i < N_TICKS; i++) {
     const p = dayData.ticks[i];
     const pl = plan.get(i);
+    // Trading halts (halt days): no orders until it reopens; a planned entry waits.
+    if (haltAt(dayData, i)) { if (pl && !plan.has(i + 1)) plan.set(i + 1, pl); continue; }
     if (pl && day.qty === 0) {
       const d = orderDelta(day, pl.side, size, p);
       const f = applyFill(day.qty, day.avg, d, p, day.mult);
@@ -109,6 +111,7 @@ function playDayOptions(run, tier, opts, rng, stats) {
   };
   for (let i = 0; i < N_TICKS; i++) {
     const pl = plan.get(i);
+    if (haltAt(m, i)) { if (pl && !plan.has(i + 1)) plan.set(i + 1, pl); continue; } // halted: wait
     if (pl && day.qty === 0) {
       const dodge = opts.dodgeEarnings && !pl.bet && E != null && i < E && pl.hold >= E;
       const right = pl.side > 0 ? 'C' : 'P';
