@@ -164,4 +164,4 @@ Every edge card has a prop that also appears on the desk once the player owns it
 - The desk is the same in every tier, so the slots are identical. Only the trimmed crops differ slightly, because of shadows and light.
 - Props never overlap each other, so any combination can be shown at once. To move one, edit its slot, run with `--ids <id> --check`, and look at `art/out/props/check-<tier>.png` (needs Pillow).
 - `--cards`: 480x480 close-ups on a transparent background with a shadow-catcher floor, a warm key, a lilac and a cool rim light, AgX. Writes `assets/cards/<id>.webp`. The pose and camera height for each prop are in `CARD`.
-- Times on 4 cores at 160 samples: about 9 minutes each for tier1 and tier2, 5 for tier3, 9 for the cards. WebP is made with ffmpeg (libwebp, yuva420p, quality 85).
+- Times on 4 cores at 160 samples: about 9 minutes each for tier1 and tier2, 5 for tier3, 9 for the cards. The six props added in 0.10 (plus the moved chili) took 111 s for tier1, 124 s for tier2, 90 s for tier3 and 310 s for their seven cards. WebP is made with ffmpeg (libwebp, yuva420p, quality 85).

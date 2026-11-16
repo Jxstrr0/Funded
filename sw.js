@@ -47,6 +47,8 @@ const CORE = [
   'assets/props/tier1/riskFriend.webp', 'assets/props/tier1/shortWeek.webp',
   'assets/props/tier1/stopDiscipline.webp', 'assets/props/tier1/tapeReader.webp',
   'assets/props/tier1/thetaShield.webp', 'assets/props/tier1/whisper.webp',
+  'assets/cards/insurance.webp', 'assets/cards/bellClerk.webp', 'assets/cards/ironStomach.webp', 'assets/cards/biggerBook.webp', 'assets/cards/deepPockets.webp', 'assets/cards/leverageLoan.webp',
+  'assets/props/tier1/insurance.webp', 'assets/props/tier1/bellClerk.webp', 'assets/props/tier1/ironStomach.webp', 'assets/props/tier1/biggerBook.webp', 'assets/props/tier1/deepPockets.webp', 'assets/props/tier1/leverageLoan.webp',
   'assets/audio/buy.mp3', 'assets/audio/sell.mp3', 'assets/audio/flatten.mp3',
   'assets/audio/denied.mp3', 'assets/audio/news.mp3', 'assets/audio/tick.mp3',
   'assets/audio/bell.mp3', 'assets/audio/fired.mp3', 'assets/audio/pass.mp3',
