@@ -90,5 +90,5 @@ test('futures: whole contracts, fixed cap, $ per point', async () => {
   assert.equal(snap.breach, 'dailyLoss');
   // Mulligan room scales with the tier's daily limit.
   const m = applyMulligan({ ...run, mulligans: 1 }, 46500, TIER2);
-  assert.equal(m.floor, 45000);
+  assert.equal(m.floor, 46500 - TIER2.dailyLossLimit);
 });

@@ -291,7 +291,7 @@ Keep game logic (engine, rules) separate from rendering so the numbers can be tu
 - How futures and options play in an arcade style (stages 5–6).
 - Sound design.
 - Fired and promoted screen designs.
-- Daily Challenge.
+- Daily Challenge: decided and built in 0.10.0.0 (one seeded day a day, the tier rotates by date, two fixed edges, the first try is scored, replays are practice).
 
 ---
 

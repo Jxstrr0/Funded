@@ -14,11 +14,16 @@ const CASES = [
   ['riskFriend', ['riskFriend'], []],
   ['shortWeek', ['shortWeek'], []],
   ['coffee', ['coffee'], []],
+  ['insurance', ['insurance'], []],
+  ['ironStomach', ['ironStomach'], []],
+  ['leverageLoan', ['leverageLoan'], []],
   ['M:tightLeash', [], ['tightLeash']],
   ['M:maxOnly', [], ['maxOnly']],
 ];
 // Theta Shield is offered on options only.
-const OPTION_CASES = [...CASES.slice(0, 7), ['thetaShield', ['thetaShield'], []], ...CASES.slice(7)];
+const OPTION_CASES = [...CASES.slice(0, 10), ['thetaShield', ['thetaShield'], []], ['deepPockets', ['deepPockets'], []], ...CASES.slice(10)];
+// Bigger Book is offered on futures only.
+const FUTURES_CASES = [...CASES.slice(0, 10), ['biggerBook', ['biggerBook'], []], ...CASES.slice(10)];
 const N = +process.argv[2] || 3000;
 const TIERS = (process.argv[3] || 'tier1,tier2,tier3').split(',');
 const pct = (x) => `${(100 * x / N).toFixed(1).padStart(5)}%`;
@@ -26,7 +31,7 @@ for (const tier of TIERS) {
   const options = tier === 'tier3';
   for (const [sn, st] of Object.entries(options ? OPTION_STYLES : STYLES)) {
     console.log(`\n== ${tier} ${sn} (n=${N})`);
-    for (const [name, edges, mand] of options ? OPTION_CASES : CASES) {
+    for (const [name, edges, mand] of options ? OPTION_CASES : tier === 'tier2' ? FUTURES_CASES : CASES) {
       let pass = 0, fired = 0, rep = 0;
       const out = {};
       const o = { thru: 0, thruLoss: 0, thruPnl: 0, crushFired: 0 };

@@ -43,7 +43,8 @@ def opt(name, default=None):
 
 
 IDS = ["rewind", "hotHand", "stopDiscipline", "tapeReader", "riskFriend",
-       "shortWeek", "coffee", "whisper", "rainmaker", "thetaShield"]
+       "shortWeek", "coffee", "whisper", "rainmaker", "thetaShield",
+       "insurance", "bellClerk", "ironStomach", "biggerBook", "deepPockets", "leverageLoan"]
 SEL = opt("--ids", ",".join(IDS)).split(",")
 
 # Desk slots, in metres in the scene (desk top at z = DESK_H). The desk, monitors, keyboard and
@@ -60,8 +61,14 @@ SLOTS = {
     "rewind":         dict(loc=(0.115, 0.152, D), rot=(math.radians(-12), 0, math.radians(-6))),
     "whisper":        dict(loc=(0.063, 0.022, D), rot_z=math.radians(14)),
     "rainmaker":      dict(loc=(0.190, 0.020, D), scale=0.85),
-    "hotHand":        dict(loc=(0.186, -0.118, D + 0.003), rot_z=math.radians(70)),
+    "hotHand":        dict(loc=(0.186, -0.112, D + 0.003), rot_z=math.radians(40)),
     "thetaShield":    dict(loc=(0.266, 0.030, D), rot_z=0.3, scale=0.9),
+    "insurance":      dict(loc=(-0.122, 0.08, D), rot_z=math.radians(-4), scale=0.72),
+    "bellClerk":      dict(loc=(-0.085, 0.16, D), rot_z=math.radians(20)),
+    "ironStomach":    dict(loc=(0.126, 0.03, D), rot_z=math.radians(65)),
+    "biggerBook":     dict(loc=(0.2205, 0.21, D), rot_z=math.radians(-3), scale=0.82),
+    "deepPockets":    dict(loc=(0.178, -0.172, D), rot_z=math.radians(8)),
+    "leverageLoan":   dict(loc=(-0.205, 0.17, D), rot_z=math.radians(-12), scale=0.85),
 }
 
 # Card stills: pose per prop (the builder kwargs) and the camera's elevation in degrees.
@@ -76,6 +83,12 @@ CARD = {
     "whisper":        (dict(loc=(0, 0, 0), rot_z=math.radians(28)), 30),
     "rainmaker":      (dict(loc=(0, 0, 0)), 22),
     "thetaShield":    (dict(loc=(0, 0, 0), rot_z=0.3), 14),
+    "insurance":      (dict(loc=(0, 0, 0), rot_z=math.radians(-8)), 40),
+    "bellClerk":      (dict(loc=(0, 0, 0), rot_z=math.radians(-25)), 38),
+    "ironStomach":    (dict(loc=(0, 0, 0), rot_z=math.radians(-15)), 30),
+    "biggerBook":     (dict(loc=(0, 0, 0), rot_z=math.radians(-62)), 28),
+    "deepPockets":    (dict(loc=(0, 0, 0), rot_z=math.radians(-18)), 36),
+    "leverageLoan":   (dict(loc=(0, 0, 0), rot_z=math.radians(-6)), 42),
 }
 
 SCREEN_BOTTOM_PCT = 78.4
@@ -103,9 +116,15 @@ def driver():
             t = time.time()
             cmd = [blender, "-b", "--factory-startup", "-P", os.path.join(HERE, "build_scene.py"), "--",
                    "--variant", tier, "--samples", samples, "--hook", os.path.abspath(__file__), "--ids", ",".join(SEL)]
+            if "--slots-only" in ARGV:
+                cmd.append("--slots-only")
             print(" ".join(cmd), flush=True)
             subprocess.run(cmd, check=True)
             print(f"desk props {tier}: {time.time() - t:.0f}s", flush=True)
+            if "--slots-only" in ARGV:
+                slot_preview(tier)
+    if "--slots-only" in ARGV:
+        return
     if "--cards" in ARGV:
         t = time.time()
         subprocess.run([blender, "-b", "--factory-startup", "-P", os.path.abspath(__file__), "--", "--cards",
@@ -148,6 +167,64 @@ def check_composites(tiers):
         path = os.path.join(out, f"check-{tier}.png")
         im.convert("RGB").save(path)
         print(f"check {tier}: {path}; overlapping solid pixels: {clash or 'none'}")
+
+
+def convex_hull(pts):
+    pts = sorted(set((round(x, 1), round(y, 1)) for x, y in pts))
+    if len(pts) < 3:
+        return pts
+
+    def half(seq):
+        h = []
+        for q in seq:
+            while len(h) >= 2 and (h[-1][0] - h[-2][0]) * (q[1] - h[-2][1]) - (h[-1][1] - h[-2][1]) * (q[0] - h[-2][0]) <= 0:
+                h.pop()
+            h.append(q)
+        return h
+    lo, hi = half(pts), half(reversed(pts))
+    return lo[:-1] + hi[:-1]
+
+
+def slot_preview(tier):
+    """--slots-only: draw each prop's projected outline (union of its parts' hulls) over the desk,
+    and report pairs whose outlines overlap. A quick, slightly pessimistic stand-in for --check."""
+    from PIL import Image, ImageDraw
+    import numpy as np
+    out = os.path.join(HERE, "out", "props")
+    hulls = json.load(open(os.path.join(out, f"hulls-{tier}.json")))
+    desk = {"tier1": "desk.jpg"}.get(tier, f"desk-{tier}.jpg")
+    im = Image.open(os.path.join(ROOT, "assets", desk)).convert("RGB")
+    W, H = im.size
+    masks = {}
+    for pid, hs in hulls.items():
+        m = Image.new("L", (W, H), 0)
+        d = ImageDraw.Draw(m)
+        for h in hs:
+            d.polygon([tuple(q) for q in h], fill=255)
+        masks[pid] = np.asarray(m) > 0
+    clash = {}
+    ids = list(hulls)
+    for i, a in enumerate(ids):
+        for b in ids[i + 1:]:
+            n = int((masks[a] & masks[b]).sum())
+            if n:
+                clash[(a, b)] = n
+    ov = Image.new("RGBA", (W, H), (0, 0, 0, 0))
+    d = ImageDraw.Draw(ov)
+    pal = [(255, 80, 80), (80, 220, 120), (90, 150, 255), (255, 200, 60), (220, 90, 255), (60, 230, 230)]
+    for k, pid in enumerate(ids):
+        c = pal[k % len(pal)]
+        mk = Image.fromarray((masks[pid] * 110).astype(np.uint8))
+        ov.paste(Image.new("RGBA", (W, H), c + (255,)), (0, 0), mk)
+        ys, xs = np.nonzero(masks[pid])
+        if len(xs):
+            d.text((int(xs.min()), int(ys.max()) + 2), pid, fill=c + (255,))
+    for (l, r, t, b) in ((11, 89, 21.6, 47.6), (11, 89, 52.4, 78.4)):
+        d.rectangle((l / 100 * W, t / 100 * H, r / 100 * W, b / 100 * H), outline=(255, 60, 60, 255), width=2)
+    im = Image.alpha_composite(im.convert("RGBA"), ov).crop((0, int(H * 0.74), W, H))
+    path = os.path.join(out, f"slots-{tier}.png")
+    im.convert("RGB").save(path)
+    print(f"slots {tier}: {path}; overlapping outlines (px): {clash or 'none'}")
 
 
 # =====================================================================================
@@ -216,6 +293,16 @@ def hook(G):
               f"{'OK' if bad == 0 else f'{bad} vertices over a hero screen'}{f', {off} off frame' if off else ''}")
     print("slot check " + ("OK" if ok else "FAIL"))
     if "--slots-only" in ARGV:
+        # each mesh part's projected convex hull, in frame pixels, for slot_preview()
+        hulls = {}
+        for pid in IDS:
+            hs = []
+            for ob in prop_objects(roots[pid]):
+                ps = [world_to_camera_view(scene, cam, w) for w in world_points([ob], dg)]
+                if len(ps) >= 3:
+                    hs.append(convex_hull([(q.x * RX, (1 - q.y) * RY) for q in ps]))
+            hulls[pid] = hs
+        json.dump(hulls, open(os.path.join(HERE, "out", "props", f"hulls-{tier}.json"), "w"))
         return
 
     # --- render settings shared by the three passes

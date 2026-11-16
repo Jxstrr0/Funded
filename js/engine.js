@@ -1,5 +1,5 @@
 // Seeded price engine. Pure: inputs in, ticks and candles out. No DOM.
-import { SESSION, ENGINE, TIER1, TICKERS, HEADLINES, EARNINGS_HEADLINES } from './config.js';
+import { SESSION, ENGINE, TIER1, TICKERS, HEADLINES, EARNINGS_HEADLINES, DAY_TYPES, FED_HEADLINES, HALT_HEADLINES } from './config.js';
 
 export function mulberry32(seed) {
   let a = seed >>> 0;
@@ -64,12 +64,31 @@ function scheduleNews(rng, session, n) {
   return slots;
 }
 
+/** The day's type (DAY_TYPES), seeded: null on most days, else 'gap' | 'fed' | 'trend' | 'halt'. */
+export function dayTypeFor(seed, cfg = DAY_TYPES) {
+  const rng = mulberry32(hashSeed(seed, 'daytype'));
+  if (rng() >= cfg.chance) return null;
+  const names = Object.keys(cfg.types);
+  const total = names.reduce((s, k) => s + cfg.types[k].weight, 0);
+  let r = rng() * total;
+  for (const k of names) if ((r -= cfg.types[k].weight) <= 0) return k;
+  return names[names.length - 1];
+}
+
+const between = (rng, [lo, hi]) => lo + (hi - lo) * rng();
+const intBetween = (rng, [lo, hi]) => lo + Math.floor(rng() * (hi - lo + 1));
+
 /**
- * Generate a full trading day up front.
- * @returns {{seed, ticker, open, ticks: Float64Array, news: Array, regimes: string[]}}
+ * Generate a full trading day up front. `dayType` forces a type (or null for
+ * none); left out, it is seeded (dayTypeFor). Scripted days never get one.
+ * @returns {{seed, ticker, open, ticks: Float64Array, news: Array, regimes: string[], type: string|null, halts: Array<{from, to, candle}>, gap?: number}}
  */
-export function generateDay({ seed, dayStartBalance = TIER1.startBalance, session = SESSION, engine = ENGINE, rules = TIER1, script = null }) {
+export function generateDay({ seed, dayStartBalance = TIER1.startBalance, session = SESSION, engine = ENGINE, rules = TIER1, script = null, dayType, dayTypes = DAY_TYPES }) {
   const rng = mulberry32(seed);
+  const type = script ? null : dayType === undefined ? dayTypeFor(seed, dayTypes) : dayType;
+  const T = type ? dayTypes.types[type] : null;
+  const rx = mulberry32(hashSeed(seed, 'daytype-x')); // the type's own draws
+  const typeDir = rx() < 0.5 ? 1 : -1;
   const tpc = session.ticksPerCandle;
   const nTicks = session.candles * tpc;
   // Futures trade one fixed contract; stocks pick a ticker and a price level.
@@ -87,7 +106,8 @@ export function generateDay({ seed, dayStartBalance = TIER1.startBalance, sessio
   // News: times known up front, headline/direction revealed when they land.
   const cap = shockCapPct(dayStartBalance, rules, engine, open);
   // A tier can override the news settings (rules.news), e.g. options keep their own.
-  const n = rules.news ? { ...engine.news, ...rules.news } : engine.news;
+  const n0 = rules.news ? { ...engine.news, ...rules.news } : engine.news;
+  const n = type === 'trend' ? { ...n0, ...T.news } : n0;
   const used = new Set();
   let news = scheduleNews(rng, session, n).map((candle) => {
     const dir = rng() < 0.5 ? 1 : -1;
@@ -100,6 +120,12 @@ export function generateDay({ seed, dayStartBalance = TIER1.startBalance, sessio
     const followTotal = Math.abs(jump) * dir * (n.followMinShareOfJump + (n.followMaxShareOfJump - n.followMinShareOfJump) * rng());
     return { candle, tick: candle * tpc, dir, headline, jump, followTicks, followTotal };
   });
+  if (type === 'fed') {
+    // One release at 14:00, at the full cap, with a long follow-through.
+    const jump = typeDir * cap * T.jumpShareOfCap;
+    const followTicks = tpc * intBetween(rx, T.followCandles);
+    news = [{ candle: T.candle, tick: T.candle * tpc, dir: typeDir, headline: pick(rx, FED_HEADLINES[typeDir > 0 ? 'up' : 'down']), jump, followTicks, followTotal: Math.abs(jump) * typeDir * between(rx, T.follow), fed: true }];
+  }
   if (script?.news) {
     // Scripted day (tutorial): fixed news, jump as a share of the cap.
     news = script.news.map((e) => {
@@ -116,7 +142,7 @@ export function generateDay({ seed, dayStartBalance = TIER1.startBalance, sessio
     const earn = Math.floor(r2() * news.length);
     news = news.map((e, k) => {
       const isEarn = k === earn;
-      const [lo, hi] = isEarn ? rules.shocks.earnings : rules.shocks.other;
+      const [lo, hi] = isEarn ? (type === 'fed' ? T.optionsJump : rules.shocks.earnings) : rules.shocks.other;
       const jump = e.dir * (lo + (hi - lo) * r2());
       const followTotal = Math.abs(jump) * e.dir * (n.followMinShareOfJump + (n.followMaxShareOfJump - n.followMinShareOfJump) * r2());
       const headline = isEarn ? pick(r2, EARNINGS_HEADLINES[e.dir > 0 ? 'up' : 'down']) : e.headline;
@@ -124,22 +150,57 @@ export function generateDay({ seed, dayStartBalance = TIER1.startBalance, sessio
     });
     earningsTick = news[earn].tick;
   }
+  if (type === 'trend') news = news.map((e) => ({ ...e, jump: e.jump * T.newsScale, followTotal: e.followTotal * T.newsScale }));
+  // Halt: one headline (early enough to reopen before the bell) freezes the
+  // tape for T.candles candles, then it reopens with a second jump. The two
+  // jumps together stay inside the first one's size (the shock cap).
+  const halts = [];
+  if (type === 'halt') {
+    const ok = news.filter((e) => e.candle + T.candles <= T.lastCandle);
+    if (ok.length) {
+      const h = ok[Math.floor(rx() * ok.length)];
+      const J = Math.abs(h.jump);
+      const reopenDir = rx() < T.reopenWithChance ? h.dir : -h.dir;
+      const at = h.candle + T.candles;
+      const reopen = {
+        candle: at, tick: at * tpc, dir: reopenDir, headline: HALT_HEADLINES[reopenDir > 0 ? 'up' : 'down'],
+        jump: reopenDir * J * between(rx, T.reopenShare), followTicks: h.followTicks,
+        followTotal: Math.abs(h.followTotal) * reopenDir, reopen: true, haltFrom: h.tick + 1,
+      };
+      halts.push({ from: h.tick + 1, to: reopen.tick, candle: h.candle });
+      news = news
+        .filter((e) => e === h || e.candle < h.candle || e.candle > at + 1) // no headlines inside the halt
+        .map((e) => (e === h ? { ...e, jump: e.dir * J * T.firstShare, followTicks: 1, followTotal: 0, halts: true } : e));
+      news.push(reopen);
+      news.sort((a, b) => a.tick - b.tick);
+    }
+  }
+  const halted = (i) => halts.some((h) => i >= h.from && i < h.to);
   const newsAt = new Map(news.map((e) => [e.tick, e]));
+  // Gap open: the open is the price after the gap; the first hour runs with it (or fills it).
+  const gap = type === 'gap' ? { pct: typeDir * between(rx, T.gapPct), go: rx() < T.followChance ? typeDir : -typeDir } : null;
 
   const sigma = (engine.dailyVol / Math.sqrt(nTicks)) * (script?.volScale ?? 1) * (c?.volScale ?? 1);
   const driftPerTick = engine.trendMovePerCandle / tpc;
   const ticks = new Float64Array(nTicks);
   const regimes = [];
-  let regime = script?.regime ?? pickRegime(rng, engine.regimes);
+  let regime = script?.regime ?? (type === 'trend' ? (typeDir > 0 ? 'trend-up' : 'trend-down') : pickRegime(rng, engine.regimes));
+  const lockRegime = !!script?.regime || type === 'trend';
+  const gapTicks = gap ? T.candles * tpc : 0;
+  const fedTick = type === 'fed' ? T.candle * tpc : 0;
   let logp = Math.log(open);
   let follow = null; // { left, perTick, total }
 
   for (let i = 0; i < nTicks; i++) {
     if (i % tpc === 0) {
-      if (i > 0 && !script?.regime && rng() > engine.regimeStay) regime = pickRegime(rng, engine.regimes, regime);
-      regimes.push(regime);
+      if (i > 0 && !lockRegime && rng() > engine.regimeStay) regime = pickRegime(rng, engine.regimes, regime);
+      regimes.push(i < gapTicks ? (gap.go > 0 ? 'trend-up' : 'trend-down') : regime);
     }
-    const R = engine.regimes[regime];
+    if (halted(i)) { ticks[i] = ticks[i - 1]; continue; } // halted: the tape stands still
+    let R = engine.regimes[regime];
+    if (i < gapTicks) R = { drift: gap.go * T.drift, vol: T.vol };
+    else if (type === 'trend') R = { ...R, drift: R.drift * T.drift };
+    else if (type === 'fed' && i < fedTick) R = { ...R, vol: R.vol * T.quietVol };
     const x = i / (nTicks - 1);
     const u = engine.uCurveMid + (engine.uCurveEdge - engine.uCurveMid) * (2 * x - 1) ** 2;
 
@@ -165,7 +226,8 @@ export function generateDay({ seed, dayStartBalance = TIER1.startBalance, sessio
     ticks[i] = Math.max(1, roundTo(Math.exp(logp), step));
   }
 
-  const day = { seed, ticker, open, ticks, news, regimes };
+  const day = { seed, ticker, open, ticks, news, regimes, type, halts };
+  if (gap) day.gap = gap.pct;
   if (rules.option) {
     const o = rules.option;
     const r3 = mulberry32(hashSeed(seed, 'iv'));
@@ -216,4 +278,9 @@ export function bookAt(day, tick, session = SESSION) {
   const bidPct = Math.max(0.12, Math.min(0.88, 0.5 + Math.tanh(r / 0.003) * 0.3 + noise));
   const depth = 2000 + rng() * 6000;
   return { bid: Math.round(depth * bidPct), ask: Math.round(depth * (1 - bidPct)), bidPct };
+}
+
+/** Is trading halted at this tick? */
+export function haltAt(day, tick) {
+  return (day.halts || []).find((h) => tick >= h.from && tick < h.to) || null;
 }

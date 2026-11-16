@@ -26,7 +26,7 @@ const CORE = [
   'css/style.css',
   'js/main.js', 'js/config.js', 'js/engine.js', 'js/rules.js', 'js/ui.js', 'js/chart.js',
   'js/audio.js', 'js/fx.js', 'js/clicker.js', 'js/edges.js', 'js/meta.js', 'js/save.js',
-  'js/tutorial.js', 'js/options.js',
+  'js/tutorial.js', 'js/options.js', 'js/daily.js',
   'assets/fonts/space-grotesk-latin.woff2', 'assets/fonts/space-grotesk-latin-ext.woff2',
   'assets/icons/favicon-32.png', 'assets/icons/apple-touch-icon.png',
   'assets/icons/icon-192.png', 'assets/icons/icon-512.png',

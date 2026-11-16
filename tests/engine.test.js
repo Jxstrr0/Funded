@@ -14,7 +14,7 @@ test('same seed gives the same day', () => {
 
 test('day shape: 1,872 ticks, 78 candles, news count within ENGINE.news min..max', () => {
   for (let s = 0; s < 200; s++) {
-    const d = generateDay({ seed: hashSeed('t', s) });
+    const d = generateDay({ seed: hashSeed('t', s), dayType: null }); // day types change the news (tested below)
     assert.equal(d.ticks.length, SESSION.candles * SESSION.ticksPerCandle);
     assert.equal(candlesUpTo(d, d.ticks.length - 1).length, SESSION.candles);
     assert.ok(d.news.length >= ENGINE.news.min && d.news.length <= ENGINE.news.max);

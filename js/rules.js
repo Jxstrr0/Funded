@@ -1,5 +1,5 @@
 // Firm rules and account maths. Pure: no DOM, no timers.
-import { TIER1, PERKS, EDGES, MANDATES } from './config.js';
+import { TIER1, PERKS, EDGES, MANDATES, FUNDED } from './config.js';
 
 const edgeById = (id) => EDGES.find((e) => e.id === id);
 
@@ -24,6 +24,7 @@ export function effectiveRules(perks = [], rules = TIER1, career = {}) {
   if (edges.includes('riskFriend')) loss += edgeById('riskFriend').lossBuffer;
   if (mandates.includes('tightLeash')) loss -= MANDATES.find((m) => m.id === 'tightLeash').lossCut;
   if (career.hot) loss += edgeById('hotHand').lossBoost;
+  if (edges.includes('leverageLoan')) loss -= edgeById('leverageLoan').lossCut;
   if (loss !== 1) out.dailyLossLimit = Math.round(rules.dailyLossLimit * loss);
   if (edges.includes('shortWeek')) out.profitTarget = Math.round(rules.profitTarget * (1 - edgeById('shortWeek').targetCut));
   if (edges.includes('coffee')) out.clockScale = 1 + edgeById('coffee').slowdown;
@@ -37,6 +38,24 @@ export function effectiveRules(perks = [], rules = TIER1, career = {}) {
     else out.buyingPowerMultiplier = Math.round(rules.buyingPowerMultiplier * k * 100) / 100;
     out.hot = true;
   }
+  if (edges.includes('leverageLoan')) {
+    // Leverage Loan (cursed): every size buys 40% more, on top of Hot Hand.
+    const k = 1 + edgeById('leverageLoan').sizeBoost;
+    const o = out.option || rules.option;
+    if (rules.option) {
+      out.option = { ...o, premiumBudget: Math.round(o.premiumBudget * k) };
+      out.maxContracts = Math.round((out.maxContracts ?? rules.maxContracts) * k);
+    } else if (rules.contract) out.maxContracts = Math.round((out.maxContracts ?? rules.maxContracts) * k);
+    else out.buyingPowerMultiplier = Math.round((out.buyingPowerMultiplier ?? rules.buyingPowerMultiplier) * k * 100) / 100;
+  }
+  if (edges.includes('biggerBook') && rules.contract) out.maxContracts = (out.maxContracts ?? rules.maxContracts) + edgeById('biggerBook').extraContracts;
+  if (edges.includes('deepPockets') && rules.option) {
+    const o = out.option || rules.option;
+    out.option = { ...o, premiumBudget: Math.round(o.premiumBudget * (1 + edgeById('deepPockets').budgetBoost)) };
+  }
+  if (edges.includes('ironStomach')) out.trailingDrawdown = Math.round(rules.trailingDrawdown * (1 + edgeById('ironStomach').drawdownBoost));
+  if (edges.includes('insurance')) out.insurance = edgeById('insurance').refund;
+  if (edges.includes('bellClerk')) out.bellClerk = true;
   if (edges.includes('thetaShield') && rules.option) {
     const t = edgeById('thetaShield');
     out.option = { ...(out.option || rules.option), ivScale: t.ivScale };
@@ -52,6 +71,7 @@ export function effectiveRules(perks = [], rules = TIER1, career = {}) {
 
 export function newRun(rules = TIER1, seed = (Math.random() * 2 ** 32) >>> 0, perks = [], career = {}) {
   const mull = PERKS.find((p) => p.id === 'mulligan');
+  const dd = (career.edges || []).includes('ironStomach') ? Math.round(rules.trailingDrawdown * (1 + edgeById('ironStomach').drawdownBoost)) : rules.trailingDrawdown;
   return {
     edges: [...(career.edges || [])],       // picked after days survived; kept through promotions
     mandates: [...(career.mandates || [])], // handicaps chosen before the career
@@ -64,7 +84,7 @@ export function newRun(rules = TIER1, seed = (Math.random() * 2 ** 32) >>> 0, pe
     day: 1,                  // 1-based day number
     balance: rules.startBalance,
     highEod: rules.startBalance,
-    floor: Math.min(rules.startBalance - rules.trailingDrawdown, rules.floorLocksAt),
+    floor: Math.min(rules.startBalance - dd, rules.floorLocksAt),
     daysCounted: 0,
     history: [],             // per-day results
   };
@@ -169,12 +189,17 @@ export function snapshot(run, day, price, rules = TIER1) {
  * 'next' | 'pass' | 'failTarget' | 'failMinDays'.
  */
 export function closeDay(run, day, rules = TIER1) {
-  const balance = day.startBalance + day.realized;
+  const raw = day.startBalance + day.realized;
+  // Insurance edge: part of a red day's loss comes back at the close.
+  const refund = rules.insurance && raw < day.startBalance ? Math.round((day.startBalance - raw) * rules.insurance) : 0;
+  const balance = raw + refund;
   const counted = day.trades > 0;
   const daysCounted = run.daysCounted + (counted ? 1 : 0);
   const highEod = Math.max(run.highEod, balance);
   const floor = Math.max(run.floor, Math.min(highEod - rules.trailingDrawdown, rules.floorLocksAt));
-  const result = { day: run.day, pnl: balance - day.startBalance, balance, counted, trades: day.trades };
+  const result = { day: run.day, pnl: balance - day.startBalance, balance, counted, trades: day.trades, refund };
+  if (day.type) result.type = day.type;
+  if (run.funded) return closeFundedDay(run, result, { balance, highEod, floor, daysCounted }, rules);
   const next = { ...run, balance, highEod, floor, daysCounted, history: [...run.history, result] };
 
   const hitTarget = balance >= rules.startBalance + rules.profitTarget;
@@ -200,4 +225,40 @@ export function applyMulligan(run, balance, rules = TIER1) {
     next.highEod = next.floor + rules.trailingDrawdown;
   }
   return next;
+}
+
+/**
+ * Funded phase: no target and no eval days. Every FUNDED.weekDays days the
+ * week's profit is split and paid out, and the account resets to its start
+ * (a red week carries over). Outcome 'next' or 'payout'.
+ */
+function closeFundedDay(run, result, acct, rules, cfg = FUNDED) {
+  const f = run.funded;
+  const next = { ...run, ...acct, history: [...run.history, result] };
+  const dayOfWeek = next.history.length;
+  if (dayOfWeek < cfg.weekDays) return { run: { ...next, day: run.day + 1 }, outcome: 'next', result };
+  const profit = acct.balance - rules.startBalance;
+  const split = profit >= cfg.bonusAt ? cfg.bonusSplit : cfg.split;
+  const paid = profit > 0 ? Math.round(profit * split) : 0;
+  const week = { week: f.week, pnl: next.history.reduce((s, d) => s + d.pnl, 0), profit, paid, split: paid ? split : 0, days: next.history };
+  const reset = paid
+    ? { balance: rules.startBalance, highEod: rules.startBalance, floor: Math.min(rules.startBalance - rules.trailingDrawdown, rules.floorLocksAt) }
+    : {};
+  return {
+    run: { ...next, ...reset, day: run.day + 1, history: [], funded: { ...f, week: f.week + 1, paid: f.paid + paid, weeks: [...(f.weeks || []), { week: f.week, pnl: week.pnl, paid }] } },
+    outcome: 'payout',
+    result,
+    week,
+  };
+}
+
+/** Rules for the funded phase: the tier's account with a payout-bonus line instead of a target. */
+export function fundedRules(rules, cfg = FUNDED) {
+  return { ...rules, profitTarget: cfg.bonusAt, evalDays: cfg.weekDays, name: `Funded · ${rules.short}`, next: null };
+}
+
+/** A funded career starts from a passed top-tier run: same edges and perks, a fresh account. */
+export function startFunded(run, rules) {
+  const r = newRun(rules, run.seed ^ 0x5eed, run.perks, { edges: run.edges, mandates: run.mandates, rewinds: run.rewinds });
+  return { ...r, mulligans: run.mulligans, funded: { week: 1, paid: 0, weeks: [] } };
 }
