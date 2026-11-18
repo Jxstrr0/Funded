@@ -88,7 +88,7 @@ Read this at the start of every session. The full design spec is `docs/HANDOFF.m
   - Risk is unchanged ($2,000 premium budget, −$3,000 daily).
   - Bot pass rates, careful / aggressive: Tier 3 17.5% / 50.8% (was 2.6% / 25.6%). Theta Shield is worth +3 / +8 points (was −5 to −6).
   - `ENGINE.version` went to 3, so a day saved mid-session (any tier) restarts from its open.
-- Visit counts: a cookieless Cloudflare Web Analytics beacon at the end of `index.html` (owner's request, 2026-11-12), shared with the studio's zone-wide analytics site.
+- Visit counts: a cookieless Cloudflare Web Analytics beacon at the end of `index.html` (owner's request, 2026-11-12), with Funded's own Web Analytics site in Cloudflare (`funded.longlight.games`, since 2026-11-18: the token first used, the zone-wide site's, was refused for this address, so no visits were counted before then).
 - Version: `VERSION` in `js/config.js` (four numbers, Major.Minor.Patch.Build, now 0.10.0.0), shown small on the title screen. Bump it in any PR that changes what players see. When it changes on `main`, `.github/workflows/publish-release.yml` publishes a GitHub Release titled from the PR, which longlight.games reads for the version and "what's new" line.
 - Update pass (0.10.0.0, owner chose all of it):
   - **Daily Challenge** (`js/daily.js`, `DAILY` in config): one seeded day for everyone, numbered from 2026-11-16. The tier rotates by date (Tier 1, 2, 3), with 2 fixed edges (`DAILY_SKIP_EDGES` and cursed edges are left out) and a par. The first try is scored (Rep, streak, share text with ▲/▼ squares via the share sheet or clipboard); replays are practice. It saves apart from the career in `funded.daily.v1`.
