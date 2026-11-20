@@ -1,6 +1,6 @@
 // Meta progress across runs: Reputation, perks, tutorial flag. Pure maths plus
 // a guarded localStorage load/save.
-import { PERKS, REPUTATION, ACHIEVEMENTS } from './config.js';
+import { PERKS, MANDATES, REPUTATION, ACHIEVEMENTS } from './config.js';
 
 const KEY = 'funded.meta.v1';
 
@@ -134,7 +134,9 @@ export function loadMeta() {
     const m = JSON.parse(localStorage.getItem(KEY) || 'null');
     if (!m || typeof m.rep !== 'number') return defaultMeta();
     const obj = (x) => (x && typeof x === 'object' && !Array.isArray(x) ? x : {});
-    return { ...defaultMeta(), ...m, stats: statsOf(m), ach: obj(m.ach), daily: obj(m.daily), seen: obj(m.seen) };
+    // Only perks and mandates the game has, each once: a damaged record must not start a run with one it can't look up.
+    const known = (list, table) => [...new Set(Array.isArray(list) ? list : [])].filter((id) => table.some((x) => x.id === id));
+    return { ...defaultMeta(), ...m, owned: known(m.owned, PERKS), mandates: known(m.mandates, MANDATES), stats: statsOf(m), ach: obj(m.ach), daily: obj(m.daily), seen: obj(m.seen) };
   } catch {
     return defaultMeta();
   }
