@@ -7,7 +7,7 @@ import { generateDay, hashSeed, dayTypeFor, haltAt, shockCapPct } from '../js/en
 import { newRun, newDay, closeDay, effectiveRules, fundedRules, startFunded } from '../js/rules.js';
 import { edgePool, unlockedOf, takeEdge } from '../js/edges.js';
 import { achievementsFor, grantAchievements, defaultMeta, recordPayout, defaultStats } from '../js/meta.js';
-import { challengeFor, challengeNumber, streak, dailyRep, trimPlayed, shareText } from '../js/daily.js';
+import { challengeFor, challengeNumber, dailyOpen, streak, dailyRep, trimPlayed, shareText } from '../js/daily.js';
 
 test('day types: about DAY_TYPES.chance of days, seeded, all four seen', () => {
   const seen = {};
@@ -165,4 +165,12 @@ test('achievements: earned once, and some unlock edges for the draft', () => {
   assert.equal(st.payouts, 1);
   assert.equal(st.paidTotal, 4000);
   assert.equal(st.bestPaid, 4000);
+});
+
+test('no Daily before Daily #1 (a phone with its date set wrong)', () => {
+  assert.equal(dailyOpen(DAILY.epoch), true);
+  assert.equal(dailyOpen('2026-11-15'), false); // the day before the first one
+  assert.equal(dailyOpen('1970-01-01'), false);
+  assert.equal(challengeNumber('1970-01-01') < 1, true);
+  assert.equal(dailyOpen('2099-12-31'), true);
 });

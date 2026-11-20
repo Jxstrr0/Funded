@@ -18,6 +18,14 @@ export function challengeNumber(key, cfg = DAILY) {
   return dayIndex(key) - dayIndex(cfg.epoch) + 1;
 }
 
+/**
+ * Is there a Daily on this date? Not before Daily #1: a phone whose date is set
+ * wrong (say 1970) would otherwise be offered "Daily #-20772".
+ */
+export function dailyOpen(key, cfg = DAILY) {
+  return challengeNumber(key, cfg) >= 1;
+}
+
 /** Everything about a date's challenge: number, tier, seed and its fixed edges. */
 export function challengeFor(key, cfg = DAILY) {
   const n = challengeNumber(key, cfg);

@@ -6,7 +6,7 @@ import { newRun, newDay, applyFill, orderDelta, optionOrder, snapshot, closeDay,
 import { edgeById, mandateById, careerOf, openDraft, draftOffer, rerollDraft, rerollsAllowed, takeEdge, headStart, repMultiplier, unlockedOf } from './edges.js';
 import { quoteAt, bs } from './options.js';
 import { loadMeta, saveMeta, reputationFor, buyPerk, canBuy, recordDay, recordEdge, recordEval, recordCareer, favouriteEdge, recordPayout, recordDaily, achievementsFor, grantAchievements } from './meta.js';
-import { dateKey, challengeFor, streak, dailyRep, trimPlayed, shareText } from './daily.js';
+import { dateKey, challengeFor, dailyOpen, streak, dailyRep, trimPlayed, shareText } from './daily.js';
 import { createTutorial } from './tutorial.js';
 import { Chart } from './chart.js';
 import * as ui from './ui.js';
@@ -1065,6 +1065,18 @@ function dailyCard(ch, note = '') {
   });
 }
 
+/** Shown instead of the Daily when the phone's date is before Daily #1. */
+function dailyEarlyCard() {
+  const first = new Date(`${DAILY.epoch}T12:00:00`).toLocaleDateString('en-CA', { year: 'numeric', month: 'long', day: 'numeric' });
+  ui.showCard(`
+    <div class="eyebrow">Daily Challenge</div>
+    <h2>Check your phone's date</h2>
+    <p>The first Daily Challenge was on ${ui.esc(first)}. This phone's date is earlier than that, so there is no Daily to play today.</p>
+    <p>Set the date in your phone's settings, then come back.</p>
+    <button class="cta" data-action="back">Back</button>
+  `, { back: title }, { clear: true });
+}
+
 function startDaily(ch, practice) {
   clearRun(DAILY_KEY);
   endTutorial();
@@ -1303,7 +1315,11 @@ function title() {
   let dsaved = loadRun(DAILY_KEY);
   if (dsaved && dsaved.run?.daily?.key !== ch.key) { clearRun(DAILY_KEY); dsaved = null; } // yesterday's, unfinished
   const done = meta.daily?.[ch.key];
-  const dailyLabel = dsaved
+  // A date before Daily #1 means the phone's date is wrong: no Daily to offer.
+  const early = !dailyOpen(ch.key);
+  if (early && dsaved) { clearRun(DAILY_KEY); dsaved = null; }
+  const dailyLabel = early ? 'Daily Challenge · check your date'
+    : dsaved
     ? `Continue Daily #${ch.n}${dsaved.run.daily.practice ? ' · practice' : ''}`
     : done ? `Daily #${ch.n} · ${ui.signed(done.pnl).text} · share` : `Daily Challenge #${ch.n} · ${TIERS[ch.tier].short}`;
   const contLabel = saved && (saved.run.funded
@@ -1331,7 +1347,7 @@ function title() {
     audio: () => { cycleAudioMode(); title(); },
     start: () => (fresh ? intro(startTutorial) : newCareer()),
     cont: () => intro(() => resumeSaved(saved)),
-    daily: () => (dsaved ? intro(() => resumeSaved(dsaved)) : dailyCard(ch)),
+    daily: () => (early ? dailyEarlyCard() : dsaved ? intro(() => resumeSaved(dsaved)) : dailyCard(ch)),
     shop: () => shop(title),
     stats: () => statsCard(title),
     guides: () => guidesCard(title),
