@@ -5,6 +5,7 @@ Read this at the start of every session. The full design spec is `docs/HANDOFF.m
 ## Owner's instructions
 
 - **Merging:** open PRs and **squash-merge them yourself** (or auto-merge) when the work is done and checks pass. No need to ask first.
+- **Never push straight to `main`.** Work on a branch; `main` only changes by merging a pull request on GitHub after `node --test tests/*.test.js` passes. Never delete or skip a test to get to green.
 - **Ask when unsure.** If a design or product decision isn't settled in `docs/HANDOFF.md` or here, ask the owner rather than guessing. Pick obvious defaults yourself and mention them.
 - **Assets:** only these sources may be used:
   - **Blender, run locally and headless** in the session container (install it if missing: Blender 4.2 LTS from download.blender.org, Cycles on the CPU). Scenes are Python build scripts in `art/`, and renders are pulled from there.
