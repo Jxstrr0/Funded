@@ -1,5 +1,5 @@
 # Publishes a GitHub Release for each new version of the game.
-# Adapted from Quench .github/workflows/publish-release.yml (12 November 2026)
+# Adapted from a retired Longlight game, .github/workflows/publish-release.yml (12 November 2026)
 #
 # Why: the Longlight site (longlight.games) reads each game's newest release
 # to show its version number and "what's new" line.
