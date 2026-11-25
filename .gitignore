@@ -1,2 +1,8 @@
 art/out/
 __pycache__/
+
+# Key and env files never go in the repo
+.env
+.env.*
+!.env.example
+.dev.vars
