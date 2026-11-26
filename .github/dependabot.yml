@@ -1,0 +1,19 @@
+# Dependabot: one grouped pull request a month for the GitHub Actions the workflows use,
+# major versions included, so the pinned actions don't go stale and a fixed hole reaches us.
+# Each action stays pinned to a full commit hash. The studio's security scan flags a new pin
+# until it has been checked against the action's own release.
+# Security alerts are separate and still arrive for everything.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule:
+      interval: monthly
+    open-pull-requests-limit: 2
+    # Wait a week after a release before proposing it (GitHub's own default is 3 days): a release
+    # published by mistake, or by someone who took over an account, is usually pulled within days.
+    cooldown:
+      default-days: 7
+    groups:
+      actions:
+        patterns: ["*"]
